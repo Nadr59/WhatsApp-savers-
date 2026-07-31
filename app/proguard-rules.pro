@@ -1,0 +1,5 @@
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
+-keep class dagger.hilt.** { *; }
+-keep class javax.inject.** { *; }
+-keep class com.example.whatsappsaver.data.local.entity.** { *; }
