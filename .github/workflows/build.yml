@@ -42,8 +42,19 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Debug - Show project structure
+        run: |
+          cat settings.gradle || true
+          echo "---"
+          ./gradlew projects || true
+          echo "---"
+          ./gradlew tasks --all | grep assemble || true
+        env:
+          ANDROID_HOME: ${{ github.workspace }}/android-sdk
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
         env:
           ANDROID_HOME: ${{ github.workspace }}/android-sdk
           ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
