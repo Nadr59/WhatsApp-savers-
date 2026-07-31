@@ -30,11 +30,18 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Generate Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.6
+          chmod +x gradlew
+          ls -la gradlew gradle/wrapper/
 
-      - name: Debug - Show projects
-        run: ./gradlew projects --no-daemon || true
+      - name: Debug - Show project structure
+        run: |
+          cat settings.gradle
+          ls -la app/
+          cat app/build.gradle | head -10
+          ./gradlew projects --no-daemon || true
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
