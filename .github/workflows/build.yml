@@ -22,56 +22,42 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept licenses and install packages
+      - name: Install SDK and accept licenses
         run: |
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
+      - name: Verify SDK installation
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls -la $ANDROID_HOME/platforms/
+          ls -la $ANDROID_HOME/build-tools/
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Fix gradle wrapper
+      - name: Generate wrapper
         run: |
           gradle wrapper --gradle-version 8.6
           chmod +x gradlew
 
-      - name: Debug - Show everything
+      - name: Create local.properties
         run: |
-          echo "=== ANDROID_HOME ==="
-          echo $ANDROID_HOME
-          echo "=== ANDROID_SDK_ROOT ==="
-          echo $ANDROID_SDK_ROOT
-          echo "=== SDK contents ==="
-          ls $ANDROID_HOME/platforms/ || true
-          echo "=== settings.gradle ==="
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          cat local.properties
+
+      - name: Debug projects
+        run: |
           cat settings.gradle
-          echo "=== app/build.gradle head ==="
-          head -5 app/build.gradle
-          echo "=== Projects ==="
-          ./gradlew projects --no-daemon 2>&1 || true
-          echo "=== Tasks with assemble ==="
-          ./gradlew tasks --all --no-daemon 2>&1 | grep -i assemble || true
+          ./gradlew projects --no-daemon || true
+          ./gradlew :app:tasks --all --no-daemon 2>&1 | grep -i assemble || echo "No assemble tasks found"
 
       - name: Build Debug APK
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-        run: |
-          echo "Building with ANDROID_HOME=$ANDROID_HOME"
-          ./gradlew assembleDebug --no-daemon --stacktrace --info 2>&1 || {
-            echo "=== assembleDebug failed, trying :app:assembleDebug ==="
-            ./gradlew :app:assembleDebug --no-daemon --stacktrace --info 2>&1
-          }
-
-      - name: Find APK files
-        if: always()
-        run: |
-          echo "=== Looking for APK files ==="
-          find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace --info
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
-        if: success()
         with:
           name: WhatsApp-Saver-debug
           path: app/build/outputs/**/*.apk
