@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -19,12 +21,15 @@ class ClipboardMonitorService : AccessibilityService() {
 
     private lateinit var clipboardManager: ClipboardManager
     private var lastText = ""
-    private var connected = false
+    private var whatsappActive = false
+    private val handler = Handler(Looper.getMainLooper())
+    private var checkRunnable: Runnable? = null
 
     companion object {
         const val TAG = "ClipboardMonitor"
         const val CHANNEL_ID = "clipboard_monitor"
         const val FOREGROUND_ID = 100
+        const val CHECK_INTERVAL = 800L // كل ثانية
 
         fun isRunning(context: Context): Boolean {
             val expected = "${context.packageName}/${ClipboardMonitorService::class.java.canonicalName}"
@@ -38,19 +43,15 @@ class ClipboardMonitorService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        connected = true
-        Log.d(TAG, "=== الخدمة اتصلت بنجاح ===")
+        Log.d(TAG, "=== الخدمة اتصلت ===")
 
         serviceInfo = serviceInfo.apply {
-            // نراقب تغيرات النافذة + تغيرات المحتوى
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                    AccessibilityEvent.TYPE_VIEW_CLICKED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            notificationTimeout = 300
-            // هذا العلم يسمح بقراءة الحافظة
+            notificationTimeout = 200
             flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            // نراقب WhatsApp فقط
-            packageNames = arrayOf("com.whatsapp", "com.whatsapp.w4b")
         }
 
         createNotificationChannel()
@@ -58,16 +59,50 @@ class ClipboardMonitorService : AccessibilityService() {
 
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
-        Toast.makeText(this, "WhatsApp Saver يعمل الآن!", Toast.LENGTH_LONG).show()
-        Log.d(TAG, "=== الخدمة جاهزة لمراقبة WhatsApp ===")
+        Toast.makeText(this, "WhatsApp Saver يعمل!", Toast.LENGTH_SHORT).show()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!connected) return
         event ?: return
+        val pkg = event.packageName?.toString() ?: return
 
-        // محاولة قراءة الحافظة عند كل حدث من WhatsApp
-        tryReadClipboard()
+        val isWhatsApp = pkg.contains("whatsapp", ignoreCase = true) &&
+                !pkg.contains(this.packageName, ignoreCase = true)
+
+        if (isWhatsApp && !whatsappActive) {
+            // WhatsApp صار في المقدمة → ابدأ المراقبة
+            whatsappActive = true
+            startClipboardChecking()
+            Log.d(TAG, "WhatsApp فعال - بدأت المراقبة")
+        } else if (!isWhatsApp && whatsappActive) {
+            // WhatsApp طار من المقدمة → وقف المراقبة
+            whatsappActive = false
+            stopClipboardChecking()
+            Log.d(TAG, "WhatsApp طار - وقفت المراقبة")
+        }
+
+        // نحاول نقرأ الحافظة من داخل الحدث (مسموح)
+        if (whatsappActive) {
+            tryReadClipboard()
+        }
+    }
+
+    private fun startClipboardChecking() {
+        stopClipboardChecking()
+        checkRunnable = object : Runnable {
+            override fun run() {
+                if (whatsappActive) {
+                    tryReadClipboard()
+                    handler.postDelayed(this, CHECK_INTERVAL)
+                }
+            }
+        }
+        handler.postDelayed(checkRunnable!!, CHECK_INTERVAL)
+    }
+
+    private fun stopClipboardChecking() {
+        checkRunnable?.let { handler.removeCallbacks(it) }
+        checkRunnable = null
     }
 
     private fun tryReadClipboard() {
@@ -77,17 +112,19 @@ class ClipboardMonitorService : AccessibilityService() {
 
             val text = clip.getItemAt(0).text?.toString() ?: return
 
-            // تجاهل النص الفاضي والمكرر
             if (text.isBlank()) return
             if (text == lastText) return
             if (text.length < 2) return
 
             lastText = text
-            Log.d(TAG, "تم نسخ: ${text.take(50)}")
+            Log.d(TAG, ">>> تم نسخ: ${text.take(60)}")
 
             showSaveNotification(text)
+
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException: ${e.message}")
+            Log.e(TAG, "Security: ${e.message}")
+            // ممنوع نقرأ الحافظة - نرسل إ_notification يطلب الضغط
+            showTapNotification()
         } catch (e: Exception) {
             Log.e(TAG, "Error: ${e.message}")
         }
@@ -107,14 +144,39 @@ class ClipboardMonitorService : AccessibilityService() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_save)
-            .setContentTitle("حفظ الرسالة؟")
+            .setContentTitle("رسالة منسوخة من WhatsApp")
             .setContentText(text.take(120))
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(pending)
             .addAction(android.R.drawable.ic_menu_save, "فتح وحفظ", pending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setVibrate(longArrayOf(0, 250, 100, 250))
+            .setDefaults(NotificationCompat.DEFAULT_SOUND)
+            .build()
+
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(200, notification)
+    }
+
+    private fun showTapNotification() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = "SAVE_FROM_CLIPBOARD"
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pending = PendingIntent.getActivity(
+            this, System.currentTimeMillis().toInt(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_save)
+            .setContentTitle("تم نسخ شيء من WhatsApp")
+            .setContentText("اضغط هنا لحفظه")
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVibrate(longArrayOf(0, 250, 100, 250))
             .build()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -147,6 +209,7 @@ class ClipboardMonitorService : AccessibilityService() {
             description = "إشعارات حفظ الرسائل"
             enableVibration(true)
             setShowBadge(true)
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
         }
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(channel)
@@ -158,7 +221,8 @@ class ClipboardMonitorService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        connected = false
+        stopClipboardChecking()
+        whatsappActive = false
         Log.d(TAG, "الخدمة توقفت")
     }
 }
