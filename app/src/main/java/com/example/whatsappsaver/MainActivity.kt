@@ -1,17 +1,17 @@
 package com.example.whatsappsaver
 
 import android.Manifest
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,7 +24,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.whatsappsaver.service.ClipboardMonitorService
 import com.example.whatsappsaver.ui.navigation.BottomNavItem
 import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.screens.*
@@ -36,13 +35,12 @@ import java.nio.charset.StandardCharsets
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private var monitorServiceRunning = false
+    // نص الحافظة اللي نقرأه لما التطبيق يفتح
+    private var clipboardText = mutableStateOf("")
 
-    private val notificationPermissionLauncher = registerForActivityResult(
+    private val notifPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) startClipboardService()
-    }
+    ) { _ -> }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,21 +50,22 @@ class MainActivity : ComponentActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
             ) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
 
-        // تشغيل الخدمة تلقائياً
-        startClipboardService()
-
-        val sharedText = extractSharedText(intent)
+        // قراءة الحافظة إذا جينا من إشعار
+        handleIntent(intent)
 
         setContent {
             WhatsAppSaverTheme {
+                val sharedText by remember { mutableStateOf("") }
+
+                // إذا فيه نص من الحافظة
+                val clipText = clipboardText.value
+
                 WhatsAppSaverApp(
-                    sharedText = sharedText,
-                    isMonitorRunning = monitorServiceRunning,
-                    onToggleMonitor = { toggleMonitor() }
+                    sharedText = clipText.ifBlank { sharedText }
                 )
             }
         }
@@ -74,56 +73,50 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val text = extractSharedText(intent)
-        if (text.isNotBlank()) {
-            // سيتم التعامل معه عبر recomposition
-        }
+        handleIntent(intent)
     }
 
-    private fun extractSharedText(intent: Intent?): String {
-        return when (intent?.action) {
+    private fun handleIntent(intent: Intent?) {
+        when (intent?.action) {
+            "SAVE_FROM_CLIPBOARD" -> {
+                // التطبيق فتح من إشعار - اقرأ الحافظة
+                readClipboardAndSave()
+            }
             Intent.ACTION_SEND -> {
-                if (intent.type == "text/plain")
-                    intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
-                else ""
+                // مشاركة من WhatsApp
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
+                if (text.isNotBlank()) {
+                    clipboardText.value = text
+                }
             }
-            ClipboardMonitorService.ACTION_SAVE -> {
-                intent.getStringExtra(ClipboardMonitorService.EXTRA_TEXT) ?: ""
-            }
-            else -> ""
         }
     }
 
-    private fun startClipboardService() {
-        val intent = Intent(this, ClipboardMonitorService::class.java)
-        ContextCompat.startForegroundService(this, intent)
-        monitorServiceRunning = true
-    }
-
-    private fun stopClipboardService() {
-        val intent = Intent(this, ClipboardMonitorService::class.java)
-        stopService(intent)
-        monitorServiceRunning = false
-    }
-
-    private fun toggleMonitor() {
-        if (monitorServiceRunning) stopClipboardService() else startClipboardService()
+    private fun readClipboardAndSave() {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = cm.primaryClip
+        if (clip != null && clip.itemCount > 0) {
+            val text = clip.getItemAt(0).text?.toString()
+            if (!text.isNullOrBlank()) {
+                clipboardText.value = text
+            } else {
+                Toast.makeText(this, "الحافظة فارغة", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "لا يوجد نص في الحافظة", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WhatsAppSaverApp(
-    sharedText: String = "",
-    isMonitorRunning: Boolean = true,
-    onToggleMonitor: () -> Unit = {}
-) {
+fun WhatsAppSaverApp(sharedText: String = "") {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    // إذا كان فيه رسالة مشاركة → افتح شاشة الإضافة
+    // إذا فيه نص → افتح شاشة الإضافة
     LaunchedEffect(sharedText) {
         if (sharedText.isNotBlank()) {
             navController.navigate(Screen.AddMessage.createRoute(sharedText))
@@ -166,11 +159,11 @@ fun WhatsAppSaverApp(
                     type = NavType.StringType
                     defaultValue = ""
                 })
-            ) { backStackEntry ->
+            ) { entry ->
                 AddMessageScreen(
                     navController = navController,
                     sharedText = URLDecoder.decode(
-                        backStackEntry.arguments?.getString("sharedText") ?: "",
+                        entry.arguments?.getString("sharedText") ?: "",
                         StandardCharsets.UTF_8.toString()
                     )
                 )
@@ -178,10 +171,10 @@ fun WhatsAppSaverApp(
             composable(
                 Screen.MessageDetail.route,
                 arguments = listOf(navArgument("messageId") { type = NavType.IntType })
-            ) { backStackEntry ->
+            ) { entry ->
                 MessageDetailScreen(
                     navController = navController,
-                    messageId = backStackEntry.arguments?.getInt("messageId") ?: 0
+                    messageId = entry.arguments?.getInt("messageId") ?: 0
                 )
             }
             composable(Screen.Categories.route) {
