@@ -31,17 +31,17 @@ import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.screens.*
 import com.example.whatsappsaver.ui.theme.WhatsAppSaverTheme
 import dagger.hilt.android.AndroidEntryPoint
-import java.net.URLDecoder
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     companion object {
-        var pendingText: String? = null
+        // النص يُمرر هنا بدال URL
+        var clipboardText: String = ""
     }
 
+    // إشارة للتنقل (عدّاد يتغير)
+    private val _navSignal = mutableStateOf(0)
     private val handler = Handler(Looper.getMainLooper())
 
     private val notifPermission = registerForActivityResult(
@@ -63,7 +63,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             WhatsAppSaverTheme {
-                MainApp()
+                val signal by _navSignal
+                MainApp(
+                    navSignal = signal,
+                    onNavConsumed = { _navSignal.value = 0 }
+                )
             }
         }
     }
@@ -76,14 +80,13 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
             "SAVE_FROM_CLIPBOARD" -> {
-                handler.postDelayed({
-                    readClipboard()
-                }, 600)
+                handler.postDelayed({ readClipboard() }, 600)
             }
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
                 if (text.isNotBlank()) {
-                    pendingText = text
+                    clipboardText = text
+                    _navSignal.value++
                 }
             }
         }
@@ -93,26 +96,16 @@ class MainActivity : ComponentActivity() {
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = cm.primaryClip
-
             if (clip != null && clip.itemCount > 0) {
                 val text = clip.getItemAt(0).text?.toString()
                 if (!text.isNullOrBlank()) {
-                    pendingText = text
+                    clipboardText = text
+                    _navSignal.value++
                     Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
-                    // أعد تعيين setContent لإعادة التكوين
-                    runOnUiThread {
-                        setContent {
-                            WhatsAppSaverTheme {
-                                MainApp()
-                            }
-                        }
-                    }
                     return
                 }
             }
-
             Toast.makeText(this, "لا شيء في الحافظة", Toast.LENGTH_SHORT).show()
-
         } catch (e: Exception) {
             Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -121,28 +114,22 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainApp() {
+fun MainApp(navSignal: Int, onNavConsumed: () -> Unit) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    // قراءة النص المعلق مرة واحدة فقط
-    val pending = MainActivity.pendingText
-    var navigated by remember { mutableStateOf(false) }
-
-    LaunchedEffect(pending) {
-        if (!pending.isNullOrBlank() && !navigated) {
-            navigated = true
-            MainActivity.pendingText = null
-
-            try {
-                val encoded = URLEncoder.encode(pending, StandardCharsets.UTF_8.name())
-                navController.navigate("add_message/$encoded") {
+    // لما تتغير الإشارة → اقرأ النص وانتقل
+    LaunchedEffect(navSignal) {
+        if (navSignal > 0) {
+            onNavConsumed()
+            val text = MainActivity.clipboardText
+            if (text.isNotBlank()) {
+                MainActivity.clipboardText = ""
+                navController.navigate(Screen.AddMessage.createRoute()) {
                     launchSingleTop = true
                 }
-            } catch (e: Exception) {
-                // تجاهل
             }
         }
     }
@@ -177,22 +164,16 @@ fun MainApp() {
             composable(Screen.Home.route) {
                 HomeScreen(navController = navController)
             }
-            composable(
-                Screen.AddMessage.route,
-                arguments = listOf(navArgument("sharedText") {
-                    type = NavType.StringType
-                    defaultValue = ""
-                })
-            ) { entry ->
-                val raw = entry.arguments?.getString("sharedText") ?: ""
-                val decoded = try {
-                    URLDecoder.decode(raw, StandardCharsets.UTF_8.name())
-                } catch (e: Exception) {
-                    raw
+            composable(Screen.AddMessage.route) {
+                // اقرأ النص من companion object
+                val text = remember {
+                    val t = MainActivity.clipboardText
+                    MainActivity.clipboardText = ""
+                    t
                 }
                 AddMessageScreen(
                     navController = navController,
-                    sharedText = decoded
+                    sharedText = text
                 )
             }
             composable(
