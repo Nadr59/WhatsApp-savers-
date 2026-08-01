@@ -15,7 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.example.whatsappsaver.service.WhatsAppNotificationListener
+import com.example.whatsappsaver.service.ClipboardMonitorService
 import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
 
@@ -24,23 +24,10 @@ import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
 fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltViewModel()) {
     val messages by viewModel.filteredMessages.collectAsState()
     val context = LocalContext.current
+    var serviceEnabled by remember { mutableStateOf(ClipboardMonitorService.isRunning(context)) }
 
-    fun isListenerEnabled(): Boolean {
-        val flat = Settings.Secure.getString(
-            context.contentResolver,
-            "enabled_notification_listeners"
-        ) ?: return false
-        return flat.contains(
-            context.packageName + "/" + WhatsAppNotificationListener::class.java.canonicalName,
-            ignoreCase = true
-        )
-    }
-
-    var serviceEnabled by remember { mutableStateOf(isListenerEnabled()) }
-
-    // إعادة التحقق عند العودة للشاشة
     LaunchedEffect(Unit) {
-        serviceEnabled = isListenerEnabled()
+        serviceEnabled = ClipboardMonitorService.isRunning(context)
     }
 
     Scaffold(
@@ -49,10 +36,7 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                 title = { Text("WhatsApp Saver") },
                 actions = {
                     IconButton(onClick = {
-                        serviceEnabled = isListenerEnabled()
-                        if (!serviceEnabled) {
-                            context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
-                        }
+                        serviceEnabled = ClipboardMonitorService.isRunning(context)
                     }) {
                         Icon(
                             imageVector = if (serviceEnabled) Icons.Default.Notifications
@@ -85,35 +69,19 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
-                            )
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("خدمة المراقبة غير مفعلة")
-                                Text(
-                                    "اضغط تفعيل لإعطاء إذن قراءة الإشعارات",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
+                            Text("خدمة المراقبة غير مفعلة")
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "خطوات التفعيل:",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            "1. اضغط زر تفعيل\n2. ابحث عن WhatsApp Saver\n3. فعّله",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Text("لتفعيل المراقبة:", style = MaterialTheme.typography.bodySmall)
+                        Text("1. اضغط زر التفعيل", style = MaterialTheme.typography.bodySmall)
+                        Text("2. ابحث عن WhatsApp Saver", style = MaterialTheme.typography.bodySmall)
+                        Text("3. فعّله", style = MaterialTheme.typography.bodySmall)
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(
                             onClick = {
-                                context.startActivity(
-                                    Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
-                                )
+                                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -122,7 +90,6 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                     }
                 }
             } else {
-                // رسالة تأكيد الخدمة
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
                     colors = CardDefaults.cardColors(
@@ -133,65 +100,37 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("المراقبة نشطة - أي رسالة وصلك في WhatsApp راح تظهر هنا")
+                        Text("المراقبة نشطة - انسخ أي رسالة في WhatsApp")
                     }
                 }
             }
 
             // قائمة الرسائل
             if (messages.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Message,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Icon(Icons.Default.Message, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("لا توجد رسائل محفوظة")
+                        Text("انسخ رسالة من WhatsApp لحفظها", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             } else {
                 LazyColumn {
                     items(messages) { msg ->
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            onClick = {
-                                navController.navigate(Screen.MessageDetail.createRoute(msg.id))
-                            }
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                            onClick = { navController.navigate(Screen.MessageDetail.createRoute(msg.id)) }
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 if (msg.isPinned) {
-                                    Icon(
-                                        Icons.Default.PushPin,
-                                        contentDescription = "مثبتة",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                    Icon(Icons.Default.PushPin, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                                 }
-                                Text(
-                                    text = msg.messageText,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 3
-                                )
+                                Text(msg.messageText, style = MaterialTheme.typography.bodyLarge, maxLines = 3)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = msg.category,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Text(msg.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
