@@ -35,7 +35,6 @@ import java.nio.charset.StandardCharsets
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // نص الحافظة اللي نقرأه لما التطبيق يفتح
     private var incomingText = mutableStateOf("")
 
     private val notifPermission = registerForActivityResult(
@@ -45,7 +44,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // طلب إذن الإشعارات (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -59,7 +57,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             WhatsAppSaverTheme {
                 val text by incomingText
-
                 WhatsAppSaverApp(sharedText = text)
             }
         }
@@ -73,11 +70,10 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
             "SAVE_FROM_CLIPBOARD" -> {
-                // التطبيق فتح من إ_notification → اقرأ الحافظة
+                // التطبيق فتح من الإشعار → اقرأ الحافظة الآن (في المقدمة = مسموح)
                 readClipboard()
             }
             Intent.ACTION_SEND -> {
-                // مشاركة
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
                 if (text.isNotBlank()) {
                     incomingText.value = text
@@ -102,7 +98,7 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "لا يوجد شيء في الحافظة", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "لا يمكن قراءة الحافظة", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -115,7 +111,6 @@ fun WhatsAppSaverApp(sharedText: String = "") {
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    // لما يجي نص → افتح شاشة الإضافة
     LaunchedEffect(sharedText) {
         if (sharedText.isNotBlank()) {
             navController.navigate(Screen.AddMessage.createRoute(sharedText))
