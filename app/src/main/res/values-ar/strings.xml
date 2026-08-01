@@ -1,2 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources><string name="app_name">حفظ رسائل واتساب</string></resources>
+<resources>
+    <string name="app_name">حفظ رسائل واتساب</string>
+    <string name="accessibility_description">مراقبة رسائل واتساب المنسوخة لحفظها تلقائياً</string>
+</resources>
