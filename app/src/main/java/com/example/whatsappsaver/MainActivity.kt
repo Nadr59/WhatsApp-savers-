@@ -36,12 +36,13 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     companion object {
-        // النص يُمرر هنا بدال URL
         var clipboardText: String = ""
     }
 
-    // إشارة للتنقل (عدّاد يتغير)
+    // إشارة للتنقل
     private val _navSignal = mutableStateOf(0)
+    // النص المُراد عرضه
+    private val _pendingText = mutableStateOf("")
     private val handler = Handler(Looper.getMainLooper())
 
     private val notifPermission = registerForActivityResult(
@@ -64,8 +65,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             WhatsAppSaverTheme {
                 val signal by _navSignal
+                val text by _pendingText
                 MainApp(
                     navSignal = signal,
+                    pendingText = text,
                     onNavConsumed = { _navSignal.value = 0 }
                 )
             }
@@ -85,7 +88,7 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
                 if (text.isNotBlank()) {
-                    clipboardText = text
+                    _pendingText.value = text
                     _navSignal.value++
                 }
             }
@@ -99,7 +102,8 @@ class MainActivity : ComponentActivity() {
             if (clip != null && clip.itemCount > 0) {
                 val text = clip.getItemAt(0).text?.toString()
                 if (!text.isNullOrBlank()) {
-                    clipboardText = text
+                    // نحفظ النص في الـ state مباشرة
+                    _pendingText.value = text
                     _navSignal.value++
                     Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
                     return
@@ -114,22 +118,26 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainApp(navSignal: Int, onNavConsumed: () -> Unit) {
+fun MainApp(
+    navSignal: Int,
+    pendingText: String,
+    onNavConsumed: () -> Unit
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    // لما تتغير الإشارة → اقرأ النص وانتقل
+    // نص مؤقت نمرره لشاشة الحفظ
+    var textForAddScreen by remember { mutableStateOf("") }
+
+    // لما تتغير الإشارة → حفظ النص وتنقل
     LaunchedEffect(navSignal) {
-        if (navSignal > 0) {
+        if (navSignal > 0 && pendingText.isNotBlank()) {
+            textForAddScreen = pendingText
             onNavConsumed()
-            val text = MainActivity.clipboardText
-            if (text.isNotBlank()) {
-                MainActivity.clipboardText = ""
-                navController.navigate(Screen.AddMessage.createRoute()) {
-                    launchSingleTop = true
-                }
+            navController.navigate(Screen.AddMessage.createRoute()) {
+                launchSingleTop = true
             }
         }
     }
@@ -165,15 +173,9 @@ fun MainApp(navSignal: Int, onNavConsumed: () -> Unit) {
                 HomeScreen(navController = navController)
             }
             composable(Screen.AddMessage.route) {
-                // اقرأ النص من companion object
-                val text = remember {
-                    val t = MainActivity.clipboardText
-                    MainActivity.clipboardText = ""
-                    t
-                }
                 AddMessageScreen(
                     navController = navController,
-                    sharedText = text
+                    sharedText = textForAddScreen
                 )
             }
             composable(
