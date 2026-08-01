@@ -1,136 +1,166 @@
 package com.example.whatsappsaver.service
 
-import android.app.Notification
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import android.os.IBinder
+import android.provider.Settings
+import android.view.accessibility.AccessibilityEvent
 import androidx.core.app.NotificationCompat
 import com.example.whatsappsaver.MainActivity
 
-class ClipboardMonitorService : Service() {
+class ClipboardMonitorService : AccessibilityService() {
 
     private lateinit var clipboardManager: ClipboardManager
-    private var lastCopiedText = ""
+    private var lastText = ""
+    private var isWhatsAppForeground = false
 
     companion object {
         const val CHANNEL_ID = "clipboard_monitor"
-        const val NOTIFICATION_ID = 1
-        const val ACTION_SAVE = "com.example.whatsappsaver.ACTION_SAVE"
-        const val EXTRA_TEXT = "extra_text"
+        const val FOREGROUND_ID = 100
+
+        fun isRunning(context: Context): Boolean {
+            val expected = "${context.packageName}/${ClipboardMonitorService::class.java.canonicalName}"
+            val enabled = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: return false
+            return enabled.split(":").any { it.equals(expected, ignoreCase = true) }
+        }
     }
 
-    override fun onCreate() {
-        super.onCreate()
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+
+        serviceInfo = serviceInfo.apply {
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            notificationTimeout = 500
+            flags = 0
+        }
+
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildServiceNotification())
+        startForeground(FOREGROUND_ID, buildRunningNotification())
 
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboardManager.addPrimaryClipChangedListener(clipboardListener)
-    }
-
-    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
-        val clip = clipboardManager.primaryClip
-        if (clip != null && clip.itemCount > 0) {
-            val text = clip.getItemAt(0).text?.toString() ?: return@OnPrimaryClipChangedListener
-
-            if (text.isNotBlank() && text != lastCopiedText) {
-                lastCopiedText = text
-
-                // تحقق إن النسخ من WhatsApp
-                val isWhatsApp = isWhatsAppInForeground()
-                if (isWhatsApp) {
-                    showSaveNotification(text)
-                }
-            }
+        clipboardManager.addPrimaryClipChangedListener {
+            onClipboardChanged()
         }
     }
 
-    private fun isWhatsAppInForeground(): Boolean {
-        val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        val tasks = am.runningAppProcesses ?: return false
-        for (task in tasks) {
-            if (task.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
-                for (pkg in task.pkgList) {
-                    if (pkg.contains("whatsapp") || pkg.contains("com.whatsapp")) {
-                        return true
-                    }
-                }
-            }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        event ?: return
+        val pkg = event.packageName?.toString() ?: return
+
+        // تحقق هل WhatsApp في المقدمة
+        isWhatsAppForeground = pkg.contains("whatsapp", ignoreCase = true)
+    }
+
+    private fun onClipboardChanged() {
+        // مهم: نتحقق من الحافظة فقط لما WhatsApp يكون في المقدمة
+        if (!isWhatsAppForeground) return
+
+        try {
+            val clip = clipboardManager.primaryClip ?: return
+            if (clip.itemCount == 0) return
+
+            val text = clip.getItemAt(0).text?.toString() ?: return
+            if (text.isBlank() || text == lastText) return
+
+            lastText = text
+            showSaveNotification(text)
+        } catch (e: Exception) {
+            // Android 10+ يمنع القراءة في الخلفية
+            // نرسل إشعار عام والتطبيق يقرأ لما يفتح
+            showGenericNotification()
         }
-        return false
     }
 
     private fun showSaveNotification(text: String) {
-        // فتح التطبيق مع الرسالة
-        val openIntent = Intent(this, MainActivity::class.java).apply {
+        val intent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_SEND
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
-        val pendingOpen = PendingIntent.getActivity(
-            this, 0, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // زر حفظ سريع
-        val saveIntent = Intent(this, MainActivity::class.java).apply {
-            action = ACTION_SAVE
-            putExtra(EXTRA_TEXT, text)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingSave = PendingIntent.getActivity(
-            this, 1, saveIntent,
+        val pending = PendingIntent.getActivity(
+            this, System.currentTimeMillis().toInt(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_save)
-            .setContentTitle("رسالة جديدة من WhatsApp")
+            .setContentTitle("حفظ الرسالة؟")
             .setContentText(text.take(100))
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(pendingOpen)
-            .addAction(android.R.drawable.ic_menu_save, "حفظ", pendingSave)
+            .setContentIntent(pending)
+            .addAction(android.R.drawable.ic_menu_save, "فتح وحفظ", pending)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .build()
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(System.currentTimeMillis().toInt(), notification)
+        nm.notify(200, notification)
     }
 
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "مراقبة الحافظة",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "إشعار عند نسخ رسائل من WhatsApp"
+    private fun showGenericNotification() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = "SAVE_FROM_CLIPBOARD"
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
+        val pending = PendingIntent.getActivity(
+            this, System.currentTimeMillis().toInt(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_save)
+            .setContentTitle("تم نسخ رسالة من WhatsApp")
+            .setContentText("اضغط هنا لحفظها")
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .build()
+
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(channel)
+        nm.notify(200, notification)
     }
 
-    private fun buildServiceNotification(): Notification {
+    private fun buildRunningNotification(): android.app.Notification {
+        val intent = Intent(this, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
-            .setContentTitle("WhatsApp Saver")
-            .setContentText("مراقبة الحافظة نشطة")
+            .setContentTitle("WhatsApp Saver نشط")
+            .setContentText("راقب الحافظة - انسخ رسالة من WhatsApp")
+            .setContentIntent(pending)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onDestroy() {
-        super.onDestroy()
-        clipboardManager.removePrimaryClipChangedListener(clipboardListener)
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "WhatsApp Saver",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "إشعارات حفظ الرسائل"
+            enableVibration(true)
+        }
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(channel)
     }
+
+    override fun onInterrupt() {}
 }
