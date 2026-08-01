@@ -2,6 +2,7 @@ package com.example.whatsappsaver.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -41,7 +42,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             notificationTimeout = 500
-            flags = AccessibilityServiceInfo.FLAG_DEFAULT
+            flags = 0
         }
 
         createNotificationChannel()
@@ -53,18 +54,12 @@ class ClipboardAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // لا نحتاج شيء هنا - المراقبة عبر listener
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     private fun onClipboardChanged() {
         val now = System.currentTimeMillis()
-        // تجنب التكرار (أقل من ثانيتين)
         if (now - lastEventTime < 2000) return
         lastEventTime = now
-
-        // لا نقرأ الحافظة هنا! (ممنوع في الخلفية)
-        // نرسل إشعار فقط - المستخدم يضغط → التطبيق يفتح → يقرأ الحافظة
 
         if (isWhatsAppForeground()) {
             showTapToSaveNotification()
@@ -81,7 +76,6 @@ class ClipboardAccessibilityService : AccessibilityService() {
     }
 
     private fun showTapToSaveNotification() {
-        // التطبيق يفتح في المقدمة ويقرأ الحافظة
         val intent = Intent(this, MainActivity::class.java).apply {
             action = "SAVE_FROM_CLIPBOARD"
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -105,7 +99,7 @@ class ClipboardAccessibilityService : AccessibilityService() {
         nm.notify(200, notification)
     }
 
-    private fun buildRunningNotification(): NotificationCompat.Builder {
+    private fun buildRunningNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pending = PendingIntent.getActivity(
             this, 0, intent,
@@ -119,13 +113,11 @@ class ClipboardAccessibilityService : AccessibilityService() {
             .setContentIntent(pending)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
+            .build()
     }
 
     private fun createNotificationChannel() {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        // قناة للإشعارات العادية
-        val mainChannel = NotificationChannel(
+        val channel = NotificationChannel(
             CHANNEL_ID,
             "WhatsApp Saver",
             NotificationManager.IMPORTANCE_HIGH
@@ -133,7 +125,8 @@ class ClipboardAccessibilityService : AccessibilityService() {
             description = "إشعارات حفظ الرسائل"
             enableVibration(true)
         }
-        nm.createNotificationChannel(mainChannel)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(channel)
     }
 
     override fun onInterrupt() {}
