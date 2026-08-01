@@ -17,14 +17,13 @@ import com.example.whatsappsaver.MainActivity
 
 class ClipboardMonitorService : AccessibilityService() {
 
-    private var whatsappOpen = false
     private val handler = Handler(Looper.getMainLooper())
-    private var resetRunnable: Runnable? = null
+    private var whatsappOpen = false
+    private var pendingReset: Runnable? = null
 
     companion object {
         const val CHANNEL_ID = "wa_saver"
         const val FOREGROUND_ID = 999
-        private const val RESET_DELAY = 5000L // 5 ثواني قبل الرجوع
 
         fun isRunning(context: Context): Boolean {
             val expected = "${context.packageName}/${ClipboardMonitorService::class.java.canonicalName}"
@@ -42,10 +41,11 @@ class ClipboardMonitorService : AccessibilityService() {
         serviceInfo = serviceInfo.apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            notificationTimeout = 500
+            notificationTimeout = 1000
         }
 
         createNotificationChannel()
+
         startForeground(FOREGROUND_ID, buildNotification(
             "WhatsApp Saver نشط",
             "جاهز لمراقبة النسخ",
@@ -63,27 +63,21 @@ class ClipboardMonitorService : AccessibilityService() {
 
         if (isWA) {
             // WhatsApp مفتوح — ألغِ أي رجوع مخطط
-            resetRunnable?.let { handler.removeCallbacks(it) }
-            resetRunnable = null
+            cancelPendingReset()
 
             if (!whatsappOpen) {
                 whatsappOpen = true
-                showWhatsAppNotification()
+                showWANotification()
             }
         } else {
-            // WhatsApp أُغلق — لكن ننتظر 5 ثواني (علشان النسخ)
-            if (whatsappOpen && resetRunnable == null) {
-                resetRunnable = Runnable {
-                    whatsappOpen = false
-                    showIdleNotification()
-                    resetRunnable = null
-                }
-                handler.postDelayed(resetRunnable!!, RESET_DELAY)
+            // WhatsApp طار من الشاشة — انتظر 10 ثواني قبل الرجوع
+            if (whatsappOpen) {
+                scheduleReset()
             }
         }
     }
 
-    private fun showWhatsAppNotification() {
+    private fun showWANotification() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(FOREGROUND_ID, buildNotification(
             "أنت في WhatsApp",
@@ -99,6 +93,24 @@ class ClipboardMonitorService : AccessibilityService() {
             "جاهز لمراقبة النسخ",
             false
         ))
+    }
+
+    private fun scheduleReset() {
+        cancelPendingReset()
+        pendingReset = Runnable {
+            whatsappOpen = false
+            showIdleNotification()
+            pendingReset = null
+        }
+        // 10 ثواني — كافية إن المستخدم ينسخ ويضغط
+        handler.postDelayed(pendingReset!!, 10000)
+    }
+
+    private fun cancelPendingReset() {
+        pendingReset?.let {
+            handler.removeCallbacks(it)
+            pendingReset = null
+        }
     }
 
     private fun buildNotification(title: String, text: String, highlight: Boolean): Notification {
@@ -148,6 +160,6 @@ class ClipboardMonitorService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        resetRunnable?.let { handler.removeCallbacks(it) }
+        cancelPendingReset()
     }
 }
