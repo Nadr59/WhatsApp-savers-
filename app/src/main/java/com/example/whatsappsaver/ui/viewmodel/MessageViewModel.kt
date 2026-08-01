@@ -22,4 +22,17 @@ class MessageViewModel @Inject constructor(private val repo: MessageRepository) 
     fun deleteMessage(m: Message) { viewModelScope.launch { repo.deleteMessage(m) } }
     fun togglePin(m: Message) { viewModelScope.launch { repo.togglePinStatus(m) } }
     fun getMessageById(id: Int): Flow<Message?> = flow { emit(repo.getMessageById(id)) }
+    fun addMessage(text: String, cat: String, note: String) {
+    viewModelScope.launch {
+        repository.insert(
+            Message(
+                messageText = text,
+                category = cat,
+                notes = note,
+                isPinned = false,
+                timestamp = System.currentTimeMillis()
+            )
+        )
+    }
+    }
 }
