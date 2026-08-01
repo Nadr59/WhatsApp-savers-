@@ -1,6 +1,5 @@
 package com.example.whatsappsaver.ui.screens
 
-import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
@@ -25,22 +24,28 @@ import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
 fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltViewModel()) {
     val messages by viewModel.filteredMessages.collectAsState()
     val context = LocalContext.current
-    var serviceEnabled by remember { mutableStateOf(ClipboardAccessibilityService.isRunning()) }
+
+    // تحقق من حالة الخدمة كل مرة ترجع الشاشة
+    var serviceEnabled by remember { mutableStateOf(ClipboardAccessibilityService.isRunning(context)) }
+
+    // إعادة التحقق عند عودة المستخدم للشاشة
+    LaunchedEffect(Unit) {
+        serviceEnabled = ClipboardAccessibilityService.isRunning(context)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("WhatsApp Saver") },
                 actions = {
-                    // زر تفعيل/تعطيل مراقبة الحافظة
                     IconButton(onClick = {
+                        serviceEnabled = ClipboardAccessibilityService.isRunning(context)
                         if (!serviceEnabled) {
-                            // فتح إعدادات Accessibility
                             context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
                     }) {
                         Icon(
-                            if (serviceEnabled) Icons.Default.Notifications
+                            imageVector = if (serviceEnabled) Icons.Default.Notifications
                             else Icons.Default.NotificationsOff,
                             contentDescription = "مراقبة",
                             tint = if (serviceEnabled)
@@ -59,7 +64,8 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // بانر تفعيل الخدمة
+
+            // بانر التفعيل - يختفي لما الخدمة تشتغل
             if (!serviceEnabled) {
                 Card(
                     modifier = Modifier
@@ -80,20 +86,40 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
+                            Text("خدمة المراقبة غير مفعلة")
                             Text(
-                                "خدمة المراقبة غير مفعلة",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                "اضغط لتفعيل مراقبة رسائل WhatsApp",
+                                "اضغط تفعيل لبدء مراقبة رسائل WhatsApp",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
-                        TextButton(onClick = {
+                        Button(onClick = {
                             context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }) {
                             Text("تفعيل")
                         }
+                    }
+                }
+            } else {
+                // رسالة تأكيد إن الخدمة شغالة
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("المراقبة نشطة - انسخ رسالة من WhatsApp")
                     }
                 }
             }
@@ -145,16 +171,11 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                                     maxLines = 3
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = msg.category,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                                Text(
+                                    text = msg.category,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
