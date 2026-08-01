@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,6 +38,7 @@ import java.nio.charset.StandardCharsets
 class MainActivity : ComponentActivity() {
 
     private var incomingText = mutableStateOf("")
+    private val handler = Handler(Looper.getMainLooper())
 
     private val notifPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -70,8 +73,11 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
             "SAVE_FROM_CLIPBOARD" -> {
-                // التطبيق فتح من الإشعار → اقرأ الحافظة الآن (في المقدمة = مسموح)
-                readClipboard()
+                // ننتظر شوية عشان التطبيق يصير في المقدمة
+                // ثم نقرأ الحافظة
+                handler.postDelayed({
+                    readClipboard()
+                }, 500)
             }
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
@@ -85,20 +91,38 @@ class MainActivity : ComponentActivity() {
     private fun readClipboard() {
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+            // نحاول مرتين
             val clip = cm.primaryClip
             if (clip != null && clip.itemCount > 0) {
                 val text = clip.getItemAt(0).text?.toString()
                 if (!text.isNullOrBlank()) {
                     incomingText.value = text
                     Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "الحافظة فارغة", Toast.LENGTH_SHORT).show()
+                    return
                 }
-            } else {
-                Toast.makeText(this, "لا يوجد شيء في الحافظة", Toast.LENGTH_SHORT).show()
             }
+
+            // المحاولة الثانية بعد ثانية
+            handler.postDelayed({
+                try {
+                    val clip2 = cm.primaryClip
+                    if (clip2 != null && clip2.itemCount > 0) {
+                        val text2 = clip2.getItemAt(0).text?.toString()
+                        if (!text2.isNullOrBlank()) {
+                            incomingText.value = text2
+                            Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
+                            return@postDelayed
+                        }
+                    }
+                    Toast.makeText(this, "لا شيء في الحافظة - انسخ أولاً", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this, "لا يمكن قراءة الحافظة", Toast.LENGTH_SHORT).show()
+                }
+            }, 1000)
+
         } catch (e: Exception) {
-            Toast.makeText(this, "لا يمكن قراءة الحافظة", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 }
