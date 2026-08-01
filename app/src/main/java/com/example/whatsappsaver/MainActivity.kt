@@ -32,12 +32,16 @@ import com.example.whatsappsaver.ui.screens.*
 import com.example.whatsappsaver.ui.theme.WhatsAppSaverTheme
 import dagger.hilt.android.AndroidEntryPoint
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private var incomingText = mutableStateOf("")
+    companion object {
+        var pendingText: String? = null
+    }
+
     private val handler = Handler(Looper.getMainLooper())
 
     private val notifPermission = registerForActivityResult(
@@ -59,8 +63,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             WhatsAppSaverTheme {
-                val text by incomingText
-                WhatsAppSaverApp(sharedText = text)
+                MainApp()
             }
         }
     }
@@ -73,16 +76,14 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
             "SAVE_FROM_CLIPBOARD" -> {
-                // ننتظر شوية عشان التطبيق يصير في المقدمة
-                // ثم نقرأ الحافظة
                 handler.postDelayed({
                     readClipboard()
-                }, 500)
+                }, 600)
             }
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
                 if (text.isNotBlank()) {
-                    incomingText.value = text
+                    pendingText = text
                 }
             }
         }
@@ -91,35 +92,26 @@ class MainActivity : ComponentActivity() {
     private fun readClipboard() {
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-
-            // نحاول مرتين
             val clip = cm.primaryClip
+
             if (clip != null && clip.itemCount > 0) {
                 val text = clip.getItemAt(0).text?.toString()
                 if (!text.isNullOrBlank()) {
-                    incomingText.value = text
+                    pendingText = text
                     Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
+                    // أعد تعيين setContent لإعادة التكوين
+                    runOnUiThread {
+                        setContent {
+                            WhatsAppSaverTheme {
+                                MainApp()
+                            }
+                        }
+                    }
                     return
                 }
             }
 
-            // المحاولة الثانية بعد ثانية
-            handler.postDelayed({
-                try {
-                    val clip2 = cm.primaryClip
-                    if (clip2 != null && clip2.itemCount > 0) {
-                        val text2 = clip2.getItemAt(0).text?.toString()
-                        if (!text2.isNullOrBlank()) {
-                            incomingText.value = text2
-                            Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
-                            return@postDelayed
-                        }
-                    }
-                    Toast.makeText(this, "لا شيء في الحافظة - انسخ أولاً", Toast.LENGTH_LONG).show()
-                } catch (e: Exception) {
-                    Toast.makeText(this, "لا يمكن قراءة الحافظة", Toast.LENGTH_SHORT).show()
-                }
-            }, 1000)
+            Toast.makeText(this, "لا شيء في الحافظة", Toast.LENGTH_SHORT).show()
 
         } catch (e: Exception) {
             Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -129,15 +121,29 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WhatsAppSaverApp(sharedText: String = "") {
+fun MainApp() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    LaunchedEffect(sharedText) {
-        if (sharedText.isNotBlank()) {
-            navController.navigate(Screen.AddMessage.createRoute(sharedText))
+    // قراءة النص المعلق مرة واحدة فقط
+    val pending = MainActivity.pendingText
+    var navigated by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pending) {
+        if (!pending.isNullOrBlank() && !navigated) {
+            navigated = true
+            MainActivity.pendingText = null
+
+            try {
+                val encoded = URLEncoder.encode(pending, StandardCharsets.UTF_8.name())
+                navController.navigate("add_message/$encoded") {
+                    launchSingleTop = true
+                }
+            } catch (e: Exception) {
+                // تجاهل
+            }
         }
     }
 
@@ -178,12 +184,15 @@ fun WhatsAppSaverApp(sharedText: String = "") {
                     defaultValue = ""
                 })
             ) { entry ->
+                val raw = entry.arguments?.getString("sharedText") ?: ""
+                val decoded = try {
+                    URLDecoder.decode(raw, StandardCharsets.UTF_8.name())
+                } catch (e: Exception) {
+                    raw
+                }
                 AddMessageScreen(
                     navController = navController,
-                    sharedText = URLDecoder.decode(
-                        entry.arguments?.getString("sharedText") ?: "",
-                        StandardCharsets.UTF_8.toString()
-                    )
+                    sharedText = decoded
                 )
             }
             composable(
