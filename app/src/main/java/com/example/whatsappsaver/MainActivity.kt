@@ -36,7 +36,7 @@ import java.nio.charset.StandardCharsets
 class MainActivity : ComponentActivity() {
 
     // نص الحافظة اللي نقرأه لما التطبيق يفتح
-    private var clipboardText = mutableStateOf("")
+    private var incomingText = mutableStateOf("")
 
     private val notifPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -54,19 +54,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // قراءة الحافظة إذا جينا من إشعار
         handleIntent(intent)
 
         setContent {
             WhatsAppSaverTheme {
-                val sharedText by remember { mutableStateOf("") }
+                val text by incomingText
 
-                // إذا فيه نص من الحافظة
-                val clipText = clipboardText.value
-
-                WhatsAppSaverApp(
-                    sharedText = clipText.ifBlank { sharedText }
-                )
+                WhatsAppSaverApp(sharedText = text)
             }
         }
     }
@@ -79,31 +73,36 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
             "SAVE_FROM_CLIPBOARD" -> {
-                // التطبيق فتح من إشعار - اقرأ الحافظة
-                readClipboardAndSave()
+                // التطبيق فتح من إ_notification → اقرأ الحافظة
+                readClipboard()
             }
             Intent.ACTION_SEND -> {
-                // مشاركة من WhatsApp
+                // مشاركة
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
                 if (text.isNotBlank()) {
-                    clipboardText.value = text
+                    incomingText.value = text
                 }
             }
         }
     }
 
-    private fun readClipboardAndSave() {
-        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = cm.primaryClip
-        if (clip != null && clip.itemCount > 0) {
-            val text = clip.getItemAt(0).text?.toString()
-            if (!text.isNullOrBlank()) {
-                clipboardText.value = text
+    private fun readClipboard() {
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = cm.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                val text = clip.getItemAt(0).text?.toString()
+                if (!text.isNullOrBlank()) {
+                    incomingText.value = text
+                    Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "الحافظة فارغة", Toast.LENGTH_SHORT).show()
+                }
             } else {
-                Toast.makeText(this, "الحافظة فارغة", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "لا يوجد شيء في الحافظة", Toast.LENGTH_SHORT).show()
             }
-        } else {
-            Toast.makeText(this, "لا يوجد نص في الحافظة", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "خطأ: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -116,7 +115,7 @@ fun WhatsAppSaverApp(sharedText: String = "") {
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    // إذا فيه نص → افتح شاشة الإضافة
+    // لما يجي نص → افتح شاشة الإضافة
     LaunchedEffect(sharedText) {
         if (sharedText.isNotBlank()) {
             navController.navigate(Screen.AddMessage.createRoute(sharedText))
