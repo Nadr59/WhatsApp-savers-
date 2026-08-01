@@ -6,9 +6,10 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.app.NotificationCompat
@@ -17,10 +18,13 @@ import com.example.whatsappsaver.MainActivity
 class ClipboardMonitorService : AccessibilityService() {
 
     private var whatsappOpen = false
+    private val handler = Handler(Looper.getMainLooper())
+    private var resetRunnable: Runnable? = null
 
     companion object {
         const val CHANNEL_ID = "wa_saver"
         const val FOREGROUND_ID = 999
+        private const val RESET_DELAY = 5000L // 5 ثواني قبل الرجوع
 
         fun isRunning(context: Context): Boolean {
             val expected = "${context.packageName}/${ClipboardMonitorService::class.java.canonicalName}"
@@ -42,8 +46,6 @@ class ClipboardMonitorService : AccessibilityService() {
         }
 
         createNotificationChannel()
-
-        // إشعار دائم — يتغير حسب السياق
         startForeground(FOREGROUND_ID, buildNotification(
             "WhatsApp Saver نشط",
             "جاهز لمراقبة النسخ",
@@ -55,37 +57,51 @@ class ClipboardMonitorService : AccessibilityService() {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
 
-        // تجاهل أحداث التطبيق نفسه
         if (pkg == this.packageName) return
 
         val isWA = pkg.contains("whatsapp", ignoreCase = true)
 
-        if (isWA && !whatsappOpen) {
-            // WhatsApp فُتح
-            whatsappOpen = true
-            updateNotification(
-                "أنت في WhatsApp",
-                "انسخ أي رسالة ثم اضغط هنا لحفظها",
-                true
-            )
-        } else if (!isWA && whatsappOpen) {
-            // WhatsApp أُغلق
-            whatsappOpen = false
-            updateNotification(
-                "WhatsApp Saver نشط",
-                "جاهز لمراقبة النسخ",
-                false
-            )
+        if (isWA) {
+            // WhatsApp مفتوح — ألغِ أي رجوع مخطط
+            resetRunnable?.let { handler.removeCallbacks(it) }
+            resetRunnable = null
+
+            if (!whatsappOpen) {
+                whatsappOpen = true
+                showWhatsAppNotification()
+            }
+        } else {
+            // WhatsApp أُغلق — لكن ننتظر 5 ثواني (علشان النسخ)
+            if (whatsappOpen && resetRunnable == null) {
+                resetRunnable = Runnable {
+                    whatsappOpen = false
+                    showIdleNotification()
+                    resetRunnable = null
+                }
+                handler.postDelayed(resetRunnable!!, RESET_DELAY)
+            }
         }
     }
 
-    private fun updateNotification(title: String, text: String, highlight: Boolean) {
+    private fun showWhatsAppNotification() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(FOREGROUND_ID, buildNotification(title, text, highlight))
+        nm.notify(FOREGROUND_ID, buildNotification(
+            "أنت في WhatsApp",
+            "انسخ رسالة ثم اضغط هنا لحفظها",
+            true
+        ))
+    }
+
+    private fun showIdleNotification() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(FOREGROUND_ID, buildNotification(
+            "WhatsApp Saver نشط",
+            "جاهز لمراقبة النسخ",
+            false
+        ))
     }
 
     private fun buildNotification(title: String, text: String, highlight: Boolean): Notification {
-        // لما المستخدم يضغط → التطبيق يفتح → يقرأ الحافظة
         val intent = Intent(this, MainActivity::class.java).apply {
             action = "SAVE_FROM_CLIPBOARD"
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -104,7 +120,6 @@ class ClipboardMonitorService : AccessibilityService() {
             .setAutoCancel(false)
 
         if (highlight) {
-            // إشعار بارز لما WhatsApp مفتوح
             builder
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setVibrate(longArrayOf(0, 200))
@@ -133,5 +148,6 @@ class ClipboardMonitorService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        resetRunnable?.let { handler.removeCallbacks(it) }
     }
 }
