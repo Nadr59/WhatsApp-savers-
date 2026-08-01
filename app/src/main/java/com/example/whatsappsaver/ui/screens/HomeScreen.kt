@@ -15,7 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.example.whatsappsaver.service.ClipboardAccessibilityService
+import com.example.whatsappsaver.service.WhatsAppNotificationListener
 import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
 
@@ -25,12 +25,22 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
     val messages by viewModel.filteredMessages.collectAsState()
     val context = LocalContext.current
 
-    // تحقق من حالة الخدمة كل مرة ترجع الشاشة
-    var serviceEnabled by remember { mutableStateOf(ClipboardAccessibilityService.isRunning(context)) }
+    fun isListenerEnabled(): Boolean {
+        val flat = Settings.Secure.getString(
+            context.contentResolver,
+            "enabled_notification_listeners"
+        ) ?: return false
+        return flat.contains(
+            context.packageName + "/" + WhatsAppNotificationListener::class.java.canonicalName,
+            ignoreCase = true
+        )
+    }
 
-    // إعادة التحقق عند عودة المستخدم للشاشة
+    var serviceEnabled by remember { mutableStateOf(isListenerEnabled()) }
+
+    // إعادة التحقق عند العودة للشاشة
     LaunchedEffect(Unit) {
-        serviceEnabled = ClipboardAccessibilityService.isRunning(context)
+        serviceEnabled = isListenerEnabled()
     }
 
     Scaffold(
@@ -39,9 +49,9 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                 title = { Text("WhatsApp Saver") },
                 actions = {
                     IconButton(onClick = {
-                        serviceEnabled = ClipboardAccessibilityService.isRunning(context)
+                        serviceEnabled = isListenerEnabled()
                         if (!serviceEnabled) {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
                         }
                     }) {
                         Icon(
@@ -65,46 +75,56 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
 
-            // بانر التفعيل - يختفي لما الخدمة تشتغل
+            // بانر التفعيل
             if (!serviceEnabled) {
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer
                     )
                 ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("خدمة المراقبة غير مفعلة")
-                            Text(
-                                "اضغط تفعيل لبدء مراقبة رسائل WhatsApp",
-                                style = MaterialTheme.typography.bodySmall
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
                             )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("خدمة المراقبة غير مفعلة")
+                                Text(
+                                    "اضغط تفعيل لإعطاء إذن قراءة الإشعارات",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
-                        Button(onClick = {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }) {
-                            Text("تفعيل")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "خطوات التفعيل:",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "1. اضغط زر تفعيل\n2. ابحث عن WhatsApp Saver\n3. فعّله",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                context.startActivity(
+                                    Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("تفعيل الآن")
                         }
                     }
                 }
             } else {
-                // رسالة تأكيد إن الخدمة شغالة
+                // رسالة تأكيد الخدمة
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
@@ -119,7 +139,7 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("المراقبة نشطة - انسخ رسالة من WhatsApp")
+                        Text("المراقبة نشطة - أي رسالة وصلك في WhatsApp راح تظهر هنا")
                     }
                 }
             }
@@ -139,10 +159,6 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("لا توجد رسائل محفوظة")
-                        Text(
-                            "انسخ رسالة من WhatsApp لحفظها",
-                            style = MaterialTheme.typography.bodySmall
-                        )
                     }
                 }
             } else {
