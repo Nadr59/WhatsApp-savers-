@@ -2,11 +2,6 @@ package com.example.whatsappsaver.ui.screens
 
 import android.content.Intent
 import android.provider.Settings
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -19,16 +14,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.whatsappsaver.service.ClipboardMonitorService
 import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
-import androidx.compose.ui.graphics.graphicsLayer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -53,7 +47,6 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             if (isSelectionMode) {
-                // ═══ شريط التحديد المتعدد ═══
                 TopAppBar(
                     title = { Text("${selectedIds.size} محدد") },
                     navigationIcon = {
@@ -71,18 +64,19 @@ fun HomeScreen(
                         IconButton(onClick = { viewModel.pinSelected() }) {
                             Icon(Icons.Default.PushPin, "تثبيت")
                         }
-                        
-                                            IconButton(onClick = { viewModel.unpinSelected() }) {
+                        IconButton(onClick = { viewModel.unpinSelected() }) {
                             Icon(
-                                Icons.Default.PushPin, "إلغاء تثبيت",
+                                Icons.Default.PushPin,
+                                "إلغاء تثبيت",
                                 modifier = Modifier.graphicsLayer { rotationZ = 45f }
                             )
-                                            }
-                            
                         }
                         IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Default.Delete, "حذف",
-                                tint = MaterialTheme.colorScheme.error)
+                            Icon(
+                                Icons.Default.Delete,
+                                "حذف",
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -90,15 +84,12 @@ fun HomeScreen(
                     )
                 )
             } else {
-                // ═══ الشريط العادي ═══
                 TopAppBar(
                     title = { Text("WhatsApp Saver") },
                     actions = {
-                        // زر التصدير
                         IconButton(onClick = { showExportDialog = true }) {
                             Icon(Icons.Default.Backup, "نسخ احتياطي")
                         }
-                        // زر الترتيب
                         Box {
                             IconButton(onClick = { showSortMenu = true }) {
                                 Icon(Icons.Default.Sort, "ترتيب")
@@ -113,7 +104,6 @@ fun HomeScreen(
                                 SortMenuItem("حسب التصنيف", MessageViewModel.SortOrder.CATEGORY, sortOrder, viewModel) { showSortMenu = false }
                             }
                         }
-                        // زر المراقبة
                         IconButton(onClick = {
                             serviceEnabled = ClipboardMonitorService.isRunning(context)
                         }) {
@@ -141,7 +131,6 @@ fun HomeScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
 
-            // ═══ بانر التفعيل ═══
             if (!serviceEnabled) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -194,12 +183,13 @@ fun HomeScreen(
                 }
             }
 
-            // ═══ قائمة الرسائل ═══
             if (messages.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            Icons.Default.Message, null, Modifier.size(72.dp),
+                            Icons.Default.Message,
+                            null,
+                            Modifier.size(72.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
@@ -257,12 +247,12 @@ fun HomeScreen(
                                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.Top
                             ) {
-                                // ═══ محتوى الرسالة ═══
                                 Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (msg.isPinned) {
                                             Icon(
-                                                Icons.Default.PushPin, null,
+                                                Icons.Default.PushPin,
+                                                null,
                                                 Modifier.size(14.dp),
                                                 tint = MaterialTheme.colorScheme.primary
                                             )
@@ -294,7 +284,6 @@ fun HomeScreen(
                                     )
                                 }
 
-                                // ═══ أزرار سريعة ═══
                                 if (!isSelectionMode) {
                                     Column {
                                         IconButton(
@@ -302,7 +291,8 @@ fun HomeScreen(
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
-                                                Icons.Default.ContentCopy, "نسخ",
+                                                Icons.Default.ContentCopy,
+                                                "نسخ",
                                                 modifier = Modifier.size(18.dp),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -312,7 +302,8 @@ fun HomeScreen(
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
-                                                Icons.Default.Share, "مشاركة",
+                                                Icons.Default.Share,
+                                                "مشاركة",
                                                 modifier = Modifier.size(18.dp),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -327,15 +318,12 @@ fun HomeScreen(
                             }
                         }
                     }
-
-                    // مساحة في الأسفل
                     item { Spacer(Modifier.height(80.dp)) }
                 }
             }
         }
     }
 
-    // ═══ حوار حذف متعدد ═══
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -357,7 +345,6 @@ fun HomeScreen(
         )
     }
 
-    // ═══ حوار التصدير ═══
     if (showExportDialog) {
         ExportImportDialog(
             viewModel = viewModel,
@@ -366,11 +353,8 @@ fun HomeScreen(
     }
 }
 
-// ═══════════════════════════════════════════
-// عنصر قائمة الترتيب
-// ═══════════════════════════════════════════
 @Composable
-fun SortMenuItem(
+private fun SortMenuItem(
     title: String,
     order: MessageViewModel.SortOrder,
     current: MessageViewModel.SortOrder,
@@ -398,11 +382,8 @@ fun SortMenuItem(
     )
 }
 
-// ═══════════════════════════════════════════
-// حوار التصدير والاستيراد
-// ═══════════════════════════════════════════
 @Composable
-fun ExportImportDialog(
+private fun ExportImportDialog(
     viewModel: MessageViewModel,
     onDismiss: () -> Unit
 ) {
@@ -439,7 +420,6 @@ fun ExportImportDialog(
                     Text("ماذا تريد أن تفعل؟")
                     Spacer(Modifier.height(12.dp))
 
-                    // ═══ تصدير ═══
                     OutlinedButton(
                         onClick = {
                             val path = viewModel.exportAllMessages()
@@ -455,7 +435,6 @@ fun ExportImportDialog(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // ═══ مشاركة الملف ═══
                     OutlinedButton(
                         onClick = {
                             val uri = viewModel.shareBackupFile()
@@ -477,7 +456,6 @@ fun ExportImportDialog(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // ═══ استيراد ═══
                     OutlinedButton(
                         onClick = { showImport = true },
                         modifier = Modifier.fillMaxWidth()
