@@ -53,6 +53,12 @@ fun MessageDetailScreen(
                             Icon(Icons.Default.Share, "مشاركة")
                         }
                         IconButton(onClick = {
+    navController.navigate("ai/${m.id}")
+}) {
+    Icon(Icons.Default.AutoAwesome, "ذكاء اصطناعي",
+        tint = MaterialTheme.colorScheme.onPrimary)
+                        }
+                        IconButton(onClick = {
                             navController.navigate(Screen.AddMessage.createRoute(m.id))
                         }) {
                             Icon(Icons.Default.Edit, "تعديل")
