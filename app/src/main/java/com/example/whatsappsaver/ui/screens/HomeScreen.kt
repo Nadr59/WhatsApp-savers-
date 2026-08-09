@@ -18,6 +18,7 @@ import androidx.navigation.NavController
 import com.example.whatsappsaver.service.ClipboardMonitorService
 import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
+import androidx.compose.ui.text.style.TextOverflow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,8 +130,18 @@ fun HomeScreen(navController: NavController, viewModel: MessageViewModel = hiltV
                                     Icon(Icons.Default.PushPin, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                                 }
                                 Text(msg.messageText, style = MaterialTheme.typography.bodyLarge, maxLines = 3)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(msg.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+if (msg.notes.isNotBlank()) {
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        msg.notes,
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+Spacer(modifier = Modifier.height(4.dp))
+Text(msg.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
