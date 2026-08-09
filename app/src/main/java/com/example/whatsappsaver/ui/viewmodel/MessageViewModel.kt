@@ -6,9 +6,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.whatsappsaver.data.ai.AiRepository
+import com.example.whatsappsaver.data.local.AiSettings
+import com.example.whatsappsaver.data.local.entity.AiHistory
 import com.example.whatsappsaver.data.local.entity.Message
 import com.example.whatsappsaver.data.repository.MessageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,86 +30,13 @@ import javax.inject.Inject
 @HiltViewModel
 class MessageViewModel @Inject constructor(
     application: Application,
-    private val repo: MessageRepository
+    private val repo: MessageRepository,
+    private val aiRepo: AiRepository,
+    private val aiSettings: AiSettings
 ) : AndroidViewModel(application) {
 
     private val context get() = getApplication<Application>()
 
-        // أضف في أعلى الكلاس:
-    // private val aiRepo: AiRepository
-    // private val repo = ... (موجود)
-
-    // ═══ معالجة AI ═══
-    var aiResult by mutableStateOf<String?>(null)
-        private set
-    var aiLoading by mutableStateOf(false)
-        private set
-    var aiError by mutableStateOf<String?>(null)
-        private set
-
-    fun processWithAi(text: String, task: String) {
-        viewModelScope.launch {
-            aiLoading = true
-            aiError = null
-            aiResult = null
-            val result = aiRepo.process(text, task)
-            result.fold(
-                onSuccess = { response ->
-                    aiResult = response
-                    repo.insertAiHistory(
-                        AiHistory(
-                            originalText = text,
-                            task = task,
-                            result = response
-                        )
-                    )
-                },
-                onFailure = { e ->
-                    aiError = e.message ?: "خطأ غير معروف"
-                }
-            )
-            aiLoading = false
-        }
-    }
-
-    fun clearAiResult() {
-        aiResult = null
-        aiError = null
-    }
-
-    fun getAiHistory() = repo.getAiHistory()
-
-    fun deleteAiHistoryItem(item: AiHistory) {
-        viewModelScope.launch { repo.deleteAiHistory(item) }
-    }
-
-    fun clearAiHistory() {
-        viewModelScope.launch { repo.clearAiHistory() }
-    }
-
-    fun getAiSettings() = aiSettings
-
-    fun saveAiProvider(provider: String) {
-        aiSettings.provider = provider
-    }
-
-    fun saveOpenAiKey(key: String) {
-        aiSettings.openaiKey = key
-    }
-
-    fun saveGeminiKey(key: String) {
-        aiSettings.geminiKey = key
-    }
-
-    fun saveMistralKey(key: String) {
-        aiSettings.mistralKey = key
-    }
-
-    fun saveCustomConfig(url: String, key: String, model: String) {
-        aiSettings.customUrl = url
-        aiSettings.customKey = key
-        aiSettings.customModel = model
-    }
     // ═══ البحث والفلترة ═══
     private val _query = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _query.asStateFlow()
@@ -164,6 +97,14 @@ class MessageViewModel @Inject constructor(
     val message: StateFlow<String?> = _message
     fun onMessageShown() { _message.value = null }
 
+    // ═══ AI ═══
+    var aiResult by mutableStateOf<String?>(null)
+        private set
+    var aiLoading by mutableStateOf(false)
+        private set
+    var aiError by mutableStateOf<String?>(null)
+        private set
+
     // ═══ الدوال الأساسية ═══
     fun setSearchQuery(q: String) { _query.value = q }
     fun setCategory(c: String?) { _cat.value = c }
@@ -191,6 +132,10 @@ class MessageViewModel @Inject constructor(
     }
 
     fun getMessageById(id: Int): Flow<Message?> = flow { emit(repo.getMessageById(id)) }
+
+    suspend fun getMessageByIdOnce(id: Int): Message? {
+        return repo.getMessageById(id)
+    }
 
     fun addMessage(text: String, cat: String, note: String) {
         viewModelScope.launch {
@@ -273,7 +218,10 @@ class MessageViewModel @Inject constructor(
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)
         }
-        context.startActivity(Intent.createChooser(intent, "مشاركة الرسائل").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(
+            Intent.createChooser(intent, "مشاركة الرسائل")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
         _selectedIds.value = emptySet()
     }
 
@@ -290,7 +238,10 @@ class MessageViewModel @Inject constructor(
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, text)
         }
-        context.startActivity(Intent.createChooser(intent, "مشاركة").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(
+            Intent.createChooser(intent, "مشاركة")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 
     // ═══ التصدير/النسخ الاحتياطي ═══
@@ -346,8 +297,8 @@ class MessageViewModel @Inject constructor(
         return try {
             val json = JSONObject(jsonText)
             val arr = json.getJSONArray("messages")
-            var count = 0
             viewModelScope.launch {
+                var count = 0
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
                     repo.insertMessage(
@@ -369,9 +320,7 @@ class MessageViewModel @Inject constructor(
             0
         }
     }
-    suspend fun getMessageByIdOnce(id: Int): Message? {
-        return repo.getMessageById(id)
-    }
+
     // ═══ نسخ احتياطي تلقائي ═══
     private fun autoBackup() {
         viewModelScope.launch {
@@ -403,5 +352,71 @@ class MessageViewModel @Inject constructor(
                 file.writeText(json.toString(2))
             } catch (_: Exception) {}
         }
+    }
+
+    // ═══ معالجة AI ═══
+    fun processWithAi(text: String, task: String) {
+        viewModelScope.launch {
+            aiLoading = true
+            aiError = null
+            aiResult = null
+            val result = aiRepo.process(text, task)
+            result.fold(
+                onSuccess = { response ->
+                    aiResult = response
+                    repo.insertAiHistory(
+                        AiHistory(
+                            originalText = text,
+                            task = task,
+                            result = response
+                        )
+                    )
+                },
+                onFailure = { e ->
+                    aiError = e.message ?: "خطأ غير معروف"
+                }
+            )
+            aiLoading = false
+        }
+    }
+
+    fun clearAiResult() {
+        aiResult = null
+        aiError = null
+    }
+
+    fun getAiHistory() = repo.getAiHistory()
+
+    fun deleteAiHistoryItem(item: AiHistory) {
+        viewModelScope.launch { repo.deleteAiHistory(item) }
+    }
+
+    fun clearAiHistory() {
+        viewModelScope.launch { repo.clearAiHistory() }
+    }
+
+    // ═══ إعدادات AI ═══
+    fun getAiSettings() = aiSettings
+
+    fun saveAiProvider(provider: String) {
+        aiSettings.provider = provider
+    }
+
+    fun saveOpenAiKey(key: String) {
+        aiSettings.openaiKey = key
+    }
+
+    fun saveGeminiKey(key: String) {
+        aiSettings.geminiKey = key
+    }
+
+    fun saveMistralKey(key: String) {
+        aiSettings.mistralKey = key
+    }
+
+    fun saveCustomConfig(url: String, key: String, model: String) {
+        aiSettings.customUrl = url
+        aiSettings.customKey = key
+        aiSettings.customModel = model
     }
 }
