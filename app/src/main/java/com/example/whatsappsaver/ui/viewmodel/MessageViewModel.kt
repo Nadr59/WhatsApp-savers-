@@ -29,6 +29,81 @@ class MessageViewModel @Inject constructor(
 
     private val context get() = getApplication<Application>()
 
+        // أضف في أعلى الكلاس:
+    // private val aiRepo: AiRepository
+    // private val repo = ... (موجود)
+
+    // ═══ معالجة AI ═══
+    var aiResult by mutableStateOf<String?>(null)
+        private set
+    var aiLoading by mutableStateOf(false)
+        private set
+    var aiError by mutableStateOf<String?>(null)
+        private set
+
+    fun processWithAi(text: String, task: String) {
+        viewModelScope.launch {
+            aiLoading = true
+            aiError = null
+            aiResult = null
+            val result = aiRepo.process(text, task)
+            result.fold(
+                onSuccess = { response ->
+                    aiResult = response
+                    repo.insertAiHistory(
+                        AiHistory(
+                            originalText = text,
+                            task = task,
+                            result = response
+                        )
+                    )
+                },
+                onFailure = { e ->
+                    aiError = e.message ?: "خطأ غير معروف"
+                }
+            )
+            aiLoading = false
+        }
+    }
+
+    fun clearAiResult() {
+        aiResult = null
+        aiError = null
+    }
+
+    fun getAiHistory() = repo.getAiHistory()
+
+    fun deleteAiHistoryItem(item: AiHistory) {
+        viewModelScope.launch { repo.deleteAiHistory(item) }
+    }
+
+    fun clearAiHistory() {
+        viewModelScope.launch { repo.clearAiHistory() }
+    }
+
+    fun getAiSettings() = aiSettings
+
+    fun saveAiProvider(provider: String) {
+        aiSettings.provider = provider
+    }
+
+    fun saveOpenAiKey(key: String) {
+        aiSettings.openaiKey = key
+    }
+
+    fun saveGeminiKey(key: String) {
+        aiSettings.geminiKey = key
+    }
+
+    fun saveMistralKey(key: String) {
+        aiSettings.mistralKey = key
+    }
+
+    fun saveCustomConfig(url: String, key: String, model: String) {
+        aiSettings.customUrl = url
+        aiSettings.customKey = key
+        aiSettings.customModel = model
+    }
     // ═══ البحث والفلترة ═══
     private val _query = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _query.asStateFlow()
