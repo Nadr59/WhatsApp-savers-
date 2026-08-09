@@ -21,7 +21,9 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (!settings.isConfigured()) {
-                return@withContext Result.failure(Exception("يرجى إعداد مفتاح AI أولاً من الإعدادات"))
+                return@withContext Result.failure(
+                    Exception("يرجى إعداد مفتاح AI أولاً من الإعدادات")
+                )
             }
 
             val prompt = buildPrompt(text, task, language)
@@ -61,7 +63,8 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             if (errorStream != null) {
                 val errorText = errorStream.bufferedReader().readText()
                 val json = JSONObject(errorText)
-                json.optJSONObject("error")?.optString("message") ?: errorText.take(300)
+                json.optJSONObject("error")?.optString("message")
+                    ?: errorText.take(300)
             } else {
                 "HTTP ${conn.responseCode}: ${conn.responseMessage}"
             }
@@ -70,115 +73,145 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // ═══ Gemini — نماذج حقيقية فقط + تشخيص واضح ═══
+    // ═══════════════════════════════════════════════════════════
     private fun callGemini(prompt: String): String {
         val apiKey = settings.geminiKey.trim()
 
-        // ═══ النماذج المجانية المتاحة أغسطس 2026 ═══
+        if (apiKey.isBlank()) {
+            throw Exception("مفتاح Gemini فارغ. أضف المفتاح من الإعدادات")
+        }
+
+        // ═══ النماذج المؤكدة فعلياً في Google API ═══
         val models = listOf(
-            "gemini-2.5-flash",
-            "gemini-3.6-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.1-flash-lite"
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro"
         )
 
         val errors = mutableListOf<String>()
 
         for (model in models) {
             try {
-                val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
-                val url = URL(urlStr)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Content-Type", "application/json")
-                    connectTimeout = 30000
-                    readTimeout = 30000
-                    doOutput = true
+                val result = callGeminiModel(apiKey, model, prompt)
+                if (result.isNotBlank()) {
+                    return result
                 }
-
-                val body = JSONObject().apply {
-                    put("contents", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("parts", JSONArray().apply {
-                                put(JSONObject().apply {
-                                    put("text", prompt)
-                                })
-                            })
-                        })
-                    })
-                }
-
-                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
-                    it.write(body.toString())
-                }
-
-                if (conn.responseCode != 200) {
-                    val errorMsg = getErrorMessage(conn)
-                    errors.add("$model: $errorMsg")
-
-                    // إذا حصة أو نموذج غير متاح — نجرب التالي
-                    if (errorMsg.contains("quota", ignoreCase = true) ||
-                        errorMsg.contains("429") ||
-                        errorMsg.contains("limit", ignoreCase = true) ||
-                        errorMsg.contains("not available", ignoreCase = true) ||
-                        errorMsg.contains("not found", ignoreCase = true) ||
-                        errorMsg.contains("deprecated", ignoreCase = true)
-                    ) {
-                        continue
-                    }
-                    throw Exception(errorMsg)
-                }
-
-                val response = conn.inputStream.bufferedReader().readText()
-                val json = JSONObject(response)
-
-                // استخراج النص من الاستجابة
-                val candidates = json.optJSONArray("candidates")
-                if (candidates != null && candidates.length() > 0) {
-                    val content = candidates.getJSONObject(0).optJSONObject("content")
-                    if (content != null) {
-                        val parts = content.optJSONArray("parts")
-                        if (parts != null && parts.length() > 0) {
-                            return parts.getJSONObject(0).getString("text").trim()
-                        }
-                    }
-                }
-                throw Exception("استجابة فارغة من النموذج $model")
-
+                errors.add("$model: استجابة فارغة")
             } catch (e: Exception) {
-                errors.add("$model: ${e.message}")
-                if (e.message?.contains("quota") == true ||
-                    e.message?.contains("429") == true ||
-                    e.message?.contains("limit") == true ||
-                    e.message?.contains("not available") == true ||
-                    e.message?.contains("not found") == true
-                ) {
-                    continue
-                }
-                throw e
+                val msg = e.message ?: "خطأ غير معروف"
+                errors.add("$model: $msg")
             }
         }
 
-        val errorSummary = errors.joinToString("\n") { "- $it" }
+        // ═══ جميع النماذج فشلت — رسالة واضحة ═══
+        val errorSummary = errors.joinToString("\n") { "  - $it" }
         throw Exception(
-            "جميع النماذج غير متاحة:\n$errorSummary\n\n" +
-            "الحلول:\n" +
-            "1. أنشئ مفتاح جديد من aistudio.google.com/apikey\n" +
-            "2. جرب مزود آخر (OpenAI أو Mistral)\n" +
-            "3. أضف رصيد Google من ai.google.dev/pricing"
+            "فشل الاتصال بـ Gemini:\n$errorSummary\n\n" +
+            "الحل الأسرع:\n" +
+            "1. أنشئ مفتاح جديد من:\n" +
+            "   aistudio.google.com/apikey\n" +
+            "2. أو جرب مزود OpenAI أو Mistral\n" +
+            "   من إعدادات التطبيق"
         )
     }
 
+    private fun callGeminiModel(apiKey: String, model: String, prompt: String): String {
+        val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+        val url = URL(urlStr)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            connectTimeout = 60000
+            readTimeout = 60000
+            doOutput = true
+            doInput = true
+        }
+
+        val body = JSONObject().apply {
+            put("contents", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("text", prompt)
+                        })
+                    })
+                })
+            })
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.7)
+                put("maxOutputTokens", 2048)
+            })
+        }
+
+        try {
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+                it.write(body.toString())
+                it.flush()
+            }
+        } catch (e: Exception) {
+            throw Exception("فشل إرسال الطلب: ${e.message}")
+        }
+
+        val responseCode = conn.responseCode
+
+        if (responseCode != 200) {
+            val errorMsg = getErrorMessage(conn)
+            conn.disconnect()
+            throw Exception(errorMsg)
+        }
+
+        return try {
+            val responseText = conn.inputStream.bufferedReader().readText()
+            conn.disconnect()
+
+            val json = JSONObject(responseText)
+            val candidates = json.optJSONArray("candidates")
+
+            if (candidates == null || candidates.length() == 0) {
+                throw Exception("لا توجد نتائج")
+            }
+
+            val content = candidates.getJSONObject(0)
+                .optJSONObject("content")
+
+            if (content == null) {
+                throw Exception("محتوى فارغ")
+            }
+
+            val parts = content.optJSONArray("parts")
+
+            if (parts == null || parts.length() == 0) {
+                throw Exception("أجزاء فارغة")
+            }
+
+            parts.getJSONObject(0).getString("text").trim()
+
+        } catch (e: Exception) {
+            if (e.message?.contains("text") == true &&
+                e.message?.contains("Empty") == true
+            ) {
+                throw Exception("استجابة فارغة")
+            }
+            throw e
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ═══ OpenAI ═══
+    // ═══════════════════════════════════════════════════════════
     private fun callOpenAI(prompt: String): String {
         val url = URL("https://api.openai.com/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer ${settings.openaiKey}")
-            connectTimeout = 30000
-            readTimeout = 30000
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("Authorization", "Bearer ${settings.openaiKey.trim()}")
+            connectTimeout = 60000
+            readTimeout = 60000
             doOutput = true
         }
 
@@ -196,6 +229,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
 
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
             it.write(body.toString())
+            it.flush()
         }
 
         if (conn.responseCode != 200) {
@@ -203,6 +237,8 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         }
 
         val response = conn.inputStream.bufferedReader().readText()
+        conn.disconnect()
+
         val json = JSONObject(response)
         return json.getJSONArray("choices")
             .getJSONObject(0)
@@ -211,15 +247,18 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             .trim()
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // ═══ Mistral ═══
+    // ═══════════════════════════════════════════════════════════
     private fun callMistral(prompt: String): String {
         val url = URL("https://api.mistral.ai/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer ${settings.mistralKey}")
-            connectTimeout = 30000
-            readTimeout = 30000
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("Authorization", "Bearer ${settings.mistralKey.trim()}")
+            connectTimeout = 60000
+            readTimeout = 60000
             doOutput = true
         }
 
@@ -236,6 +275,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
 
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
             it.write(body.toString())
+            it.flush()
         }
 
         if (conn.responseCode != 200) {
@@ -243,6 +283,8 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         }
 
         val response = conn.inputStream.bufferedReader().readText()
+        conn.disconnect()
+
         val json = JSONObject(response)
         return json.getJSONArray("choices")
             .getJSONObject(0)
@@ -251,16 +293,19 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             .trim()
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // ═══ Custom ═══
+    // ═══════════════════════════════════════════════════════════
     private fun callCustom(prompt: String): String {
         val baseUrl = settings.customUrl.trim().trimEnd('/')
         val url = URL("$baseUrl/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer ${settings.customKey}")
-            connectTimeout = 30000
-            readTimeout = 30000
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("Authorization", "Bearer ${settings.customKey.trim()}")
+            connectTimeout = 60000
+            readTimeout = 60000
             doOutput = true
         }
 
@@ -277,6 +322,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
 
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
             it.write(body.toString())
+            it.flush()
         }
 
         if (conn.responseCode != 200) {
@@ -284,6 +330,8 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         }
 
         val response = conn.inputStream.bufferedReader().readText()
+        conn.disconnect()
+
         val json = JSONObject(response)
         return json.getJSONArray("choices")
             .getJSONObject(0)
