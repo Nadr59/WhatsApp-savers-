@@ -27,7 +27,6 @@ fun MessageDetailScreen(
 ) {
     val msg by vm.getMessageById(messageId).collectAsState(initial = null)
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showShareSheet by remember { mutableStateOf(false) }
 
     msg?.let { m ->
         Scaffold(
@@ -40,7 +39,6 @@ fun MessageDetailScreen(
                         }
                     },
                     actions = {
-                        // تثبيت
                         IconButton(onClick = { vm.togglePin(m) }) {
                             Icon(
                                 Icons.Default.PushPin, "تثبيت",
@@ -48,23 +46,17 @@ fun MessageDetailScreen(
                                 else MaterialTheme.colorScheme.onPrimary
                             )
                         }
-                        // نسخ
                         IconButton(onClick = { vm.copyToClipboard(m.messageText) }) {
                             Icon(Icons.Default.ContentCopy, "نسخ")
                         }
-                        // مشاركة
                         IconButton(onClick = { vm.shareMessage(m.messageText) }) {
                             Icon(Icons.Default.Share, "مشاركة")
                         }
-                        // تعديل
                         IconButton(onClick = {
-                            navController.navigate(Screen.AddMessage.createRoute()) {
-                                launchSingleTop = true
-                            }
+                            navController.navigate(Screen.AddMessage.createRoute(m.id))
                         }) {
                             Icon(Icons.Default.Edit, "تعديل")
                         }
-                        // حذف
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(Icons.Default.Delete, "حذف", tint = MaterialTheme.colorScheme.error)
                         }
@@ -86,7 +78,6 @@ fun MessageDetailScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // ═══ التصنيف والتثبيت ═══
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -110,16 +101,11 @@ fun MessageDetailScreen(
                     }
                 }
 
-                // ═══ الرسالة ═══
                 Text("الرسالة:", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                     Text(m.messageText, Modifier.padding(16.dp))
                 }
 
-                // ═══ الملاحظات ═══
                 if (m.notes.isNotBlank()) {
                     Text("الملاحظات:", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Card(
@@ -135,7 +121,6 @@ fun MessageDetailScreen(
 
                 Spacer(Modifier.weight(1f))
 
-                // ═══ التاريخ ═══
                 Text(
                     SimpleDateFormat("dd MMMM yyyy - HH:mm", Locale("ar")).format(Date(m.timestamp)),
                     style = MaterialTheme.typography.bodySmall,
@@ -144,7 +129,6 @@ fun MessageDetailScreen(
             }
         }
 
-        // ═══ حوار الحذف ═══
         if (showDeleteDialog) {
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
