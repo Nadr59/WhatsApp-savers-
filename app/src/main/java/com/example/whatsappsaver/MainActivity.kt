@@ -31,6 +31,7 @@ import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.screens.*
 import com.example.whatsappsaver.ui.theme.WhatsAppSaverTheme
 import dagger.hilt.android.AndroidEntryPoint
+import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -128,12 +129,15 @@ fun MainApp(
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    // نص مؤقت نمرره لشاشة الحفظ
-    var textForAddScreen by remember { mutableStateOf("") }
+    // ═══ ViewModel مشترك بين كل الشاشات ═══
+    val sharedViewModel: MessageViewModel = hiltViewModel()
 
-    // لما تتغير الإشارة → حفظ النص وتنقل
+    var textForAddScreen by remember { mutableStateOf("") }
+    var lastSignal by remember { mutableIntStateOf(0) }
+
     LaunchedEffect(navSignal) {
-        if (navSignal > 0 && pendingText.isNotBlank()) {
+        if (navSignal > 0 && navSignal != lastSignal && pendingText.isNotBlank()) {
+            lastSignal = navSignal
             textForAddScreen = pendingText
             onNavConsumed()
             navController.navigate(Screen.AddMessage.createRoute()) {
@@ -170,12 +174,13 @@ fun MainApp(
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Home.route) {
-                HomeScreen(navController = navController)
+                HomeScreen(navController = navController, viewModel = sharedViewModel)
             }
             composable(Screen.AddMessage.route) {
                 AddMessageScreen(
                     navController = navController,
-                    sharedText = textForAddScreen
+                    sharedText = textForAddScreen,
+                    viewModel = sharedViewModel
                 )
             }
             composable(
@@ -184,14 +189,15 @@ fun MainApp(
             ) { entry ->
                 MessageDetailScreen(
                     navController = navController,
-                    messageId = entry.arguments?.getInt("messageId") ?: 0
+                    messageId = entry.arguments?.getInt("messageId") ?: 0,
+                    vm = sharedViewModel
                 )
             }
             composable(Screen.Categories.route) {
-                CategoriesScreen(navController = navController)
+                CategoriesScreen(navController = navController, vm = sharedViewModel)
             }
             composable(Screen.Search.route) {
-                SearchScreen(navController = navController)
+                SearchScreen(navController = navController, vm = sharedViewModel)
             }
         }
     }
