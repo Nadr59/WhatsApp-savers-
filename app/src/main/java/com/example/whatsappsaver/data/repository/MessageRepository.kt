@@ -1,11 +1,14 @@
 package com.example.whatsappsaver.data.repository
+
 import com.example.whatsappsaver.data.local.dao.MessageDao
 import com.example.whatsappsaver.data.local.entity.Message
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
+
 @Singleton
 class MessageRepository @Inject constructor(private val messageDao: MessageDao) {
+
     fun getAllMessages() = messageDao.getAllMessages()
     fun searchMessages(query: String) = messageDao.searchMessages(query)
     fun getMessagesByCategory(category: String) = messageDao.getMessagesByCategory(category)
@@ -14,5 +17,15 @@ class MessageRepository @Inject constructor(private val messageDao: MessageDao) 
     suspend fun insertMessage(message: Message) = messageDao.insertMessage(message)
     suspend fun updateMessage(message: Message) = messageDao.updateMessage(message)
     suspend fun deleteMessage(message: Message) = messageDao.deleteMessage(message)
-    suspend fun togglePinStatus(message: Message) { messageDao.updatePinStatus(message.id, !message.isPinned) }
+    suspend fun togglePinStatus(message: Message) {
+        messageDao.updatePinStatus(message.id, !message.isPinned)
+    }
+
+    // ═══ جديد: عمليات متعددة ═══
+    suspend fun deleteByIds(ids: List<Int>) = messageDao.deleteByIds(ids)
+    suspend fun updatePinStatusByIds(ids: List<Int>, isPinned: Boolean) =
+        messageDao.updatePinStatusByIds(ids, isPinned)
+    suspend fun updateMessageContent(id: Int, text: String, category: String, notes: String) =
+        messageDao.updateMessageContent(id, text, category, notes)
+    suspend fun getAllMessagesOnce() = messageDao.getAllMessagesOnce()
 }
