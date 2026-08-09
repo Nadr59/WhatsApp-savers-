@@ -109,47 +109,84 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             .trim()
     }
 
-    private fun callGemini(prompt: String): String {
-        // ═══ نموذج مُحدَّث: gemini-2.0-flash ═══
-        val model = "gemini-2.0-flash"
-        val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=${settings.geminiKey.trim()}"
-        val url = URL(urlStr)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            connectTimeout = 30000
-            readTimeout = 30000
-            doOutput = true
-        }
+        private fun callGemini(prompt: String): String {
+        val apiKey = settings.geminiKey.trim()
 
-        val body = JSONObject().apply {
-            put("contents", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("parts", JSONArray().apply {
+        // ═══ نجرب نماذج متعددة ═══
+        val models = listOf(
+            "gemini-2.5-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b"
+        )
+
+        var lastError: Exception? = null
+
+        for (model in models) {
+            try {
+                val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+                val url = URL(urlStr)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json")
+                    connectTimeout = 30000
+                    readTimeout = 30000
+                    doOutput = true
+                }
+
+                val body = JSONObject().apply {
+                    put("contents", JSONArray().apply {
                         put(JSONObject().apply {
-                            put("text", prompt)
+                            put("parts", JSONArray().apply {
+                                put(JSONObject().apply {
+                                    put("text", prompt)
+                                })
+                            })
                         })
                     })
-                })
-            })
+                }
+
+                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+
+                if (conn.responseCode != 200) {
+                    val errorMsg = getErrorMessage(conn)
+                    lastError = Exception(errorMsg)
+
+                    // إذا حصة — نجرب النموذج التالي
+                    if (errorMsg.contains("quota", ignoreCase = true) ||
+                        errorMsg.contains("429") ||
+                        errorMsg.contains("limit", ignoreCase = true)
+                    ) {
+                        continue
+                    }
+                    // خطأ آخر — نرميه مباشرة
+                    throw Exception(errorMsg)
+                }
+
+                val response = conn.inputStream.bufferedReader().readText()
+                val json = JSONObject(response)
+                return json.getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text")
+                    .trim()
+
+            } catch (e: Exception) {
+                lastError = e
+                if (e.message?.contains("quota") == true ||
+                    e.message?.contains("429") == true ||
+                    e.message?.contains("limit") == true
+                ) {
+                    continue
+                }
+                throw e
+            }
         }
 
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
-
-        if (conn.responseCode != 200) {
-            throw Exception(getErrorMessage(conn))
-        }
-
-        val response = conn.inputStream.bufferedReader().readText()
-        val json = JSONObject(response)
-        return json.getJSONArray("candidates")
-            .getJSONObject(0)
-            .getJSONObject("content")
-            .getJSONArray("parts")
-            .getJSONObject(0)
-            .getString("text")
-            .trim()
+        throw lastError ?: Exception("جميع النماذج غير متاحة حالياً. جرب مزود آخر أو أضف رصيد في Google AI Studio")
     }
 
     private fun callMistral(prompt: String): String {
