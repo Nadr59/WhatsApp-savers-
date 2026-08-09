@@ -28,6 +28,7 @@ import androidx.navigation.NavController
 import com.example.whatsappsaver.service.ClipboardMonitorService
 import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
+import androidx.compose.ui.graphics.graphicsLayer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -70,9 +71,14 @@ fun HomeScreen(
                         IconButton(onClick = { viewModel.pinSelected() }) {
                             Icon(Icons.Default.PushPin, "تثبيت")
                         }
-                        IconButton(onClick = { viewModel.unpinSelected() }) {
-                            Icon(Icons.Default.PushPin, "إلغاء تثبيت",
-                                modifier = Modifier.rotate(45f))
+                        
+                                            IconButton(onClick = { viewModel.unpinSelected() }) {
+                            Icon(
+                                Icons.Default.PushPin, "إلغاء تثبيت",
+                                modifier = Modifier.graphicsLayer { rotationZ = 45f }
+                            )
+                                            }
+                            
                         }
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(Icons.Default.Delete, "حذف",
