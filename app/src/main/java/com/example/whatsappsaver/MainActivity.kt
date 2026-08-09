@@ -192,6 +192,53 @@ fun MainApp(
                 )
             }
 
+                        // ═══ ذكاء اصطناعي ═══
+            composable(
+                route = "ai/{messageId}",
+                arguments = listOf(navArgument("messageId") { type = NavType.IntType; defaultValue = -1 })
+            ) { entry ->
+                val msgId = entry.arguments?.getInt("messageId") ?: -1
+                val msgText = if (msgId > 0) {
+                    sharedViewModel.allMessages.value.find { it.id == msgId }?.messageText ?: ""
+                } else ""
+
+                AiScreen(
+                    navController = navController,
+                    messageText = msgText,
+                    messageId = msgId,
+                    viewModel = sharedViewModel
+                )
+            }
+
+            composable("ai_settings") {
+                AiSettingsScreen(
+                    navController = navController,
+                    viewModel = sharedViewModel
+                )
+            }            // ═══ ذكاء اصطناعي ═══
+            composable(
+                route = "ai/{messageId}",
+                arguments = listOf(navArgument("messageId") { type = NavType.IntType; defaultValue = -1 })
+            ) { entry ->
+                val msgId = entry.arguments?.getInt("messageId") ?: -1
+                val msgText = if (msgId > 0) {
+                    sharedViewModel.allMessages.value.find { it.id == msgId }?.messageText ?: ""
+                } else ""
+
+                AiScreen(
+                    navController = navController,
+                    messageText = msgText,
+                    messageId = msgId,
+                    viewModel = sharedViewModel
+                )
+            }
+
+            composable("ai_settings") {
+                AiSettingsScreen(
+                    navController = navController,
+                    viewModel = sharedViewModel
+                )
+            }
             // ═══ تفاصيل الرسالة ═══
             composable(
                 route = Screen.MessageDetail.route,
