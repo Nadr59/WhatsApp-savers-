@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -128,7 +127,6 @@ fun MainApp(
     val currentDestination = navBackStackEntry?.destination
     val bottomItems = listOf(BottomNavItem.Home, BottomNavItem.Categories, BottomNavItem.Search)
 
-    // ═══ ViewModel مشترك ═══
     val sharedViewModel: MessageViewModel = hiltViewModel()
 
     var textForAddScreen by remember { mutableStateOf("") }
@@ -181,43 +179,29 @@ fun MainApp(
             composable(
                 route = Screen.AddMessage.route,
                 arguments = listOf(
-                    navArgument("editId") { type = NavType.IntType; defaultValue = -1 },
-                    navArgument("editText") { type = NavType.StringType; defaultValue = "" },
-                    navArgument("editCategory") { type = NavType.StringType; defaultValue = "عام" },
-                    navArgument("editNotes") { type = NavType.StringType; defaultValue = "" }
+                    navArgument("editId") { type = NavType.IntType; defaultValue = -1 }
                 )
             ) { entry ->
                 val editId = entry.arguments?.getInt("editId") ?: -1
-                val editText = Uri.decode(entry.arguments?.getString("editText") ?: "")
-                val editCategory = Uri.decode(entry.arguments?.getString("editCategory") ?: "عام")
-                val editNotes = Uri.decode(entry.arguments?.getString("editNotes") ?: "")
 
                 AddMessageScreen(
                     navController = navController,
-                    sharedText = if (editId > 0) editText else textForAddScreen,
+                    sharedText = textForAddScreen,
                     editId = editId,
-                    editText = editText,
-                    editCategory = editCategory,
-                    editNotes = editNotes,
                     viewModel = sharedViewModel
                 )
             }
 
             // ═══ تفاصيل الرسالة ═══
             composable(
-    route = Screen.AddMessage.route,
-    arguments = listOf(
-        navArgument("editId") { type = NavType.IntType; defaultValue = -1 }
-    )
-) { entry ->
-    val editId = entry.arguments?.getInt("editId") ?: -1
-
-    AddMessageScreen(
-        navController = navController,
-        sharedText = textForAddScreen,
-        editId = editId,
-        viewModel = sharedViewModel
-    )
+                route = Screen.MessageDetail.route,
+                arguments = listOf(navArgument("messageId") { type = NavType.IntType })
+            ) { entry ->
+                MessageDetailScreen(
+                    navController = navController,
+                    messageId = entry.arguments?.getInt("messageId") ?: 0,
+                    vm = sharedViewModel
+                )
             }
 
             // ═══ التصنيفات ═══
