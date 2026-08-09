@@ -1,7 +1,5 @@
 package com.example.whatsappsaver
 
-package com.example.whatsappsaver
-
 import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
@@ -20,7 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import androidx.hilt.navigation.compose.hiltViewModel          // ← هذا الناقص!
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -43,9 +41,7 @@ class MainActivity : ComponentActivity() {
         var clipboardText: String = ""
     }
 
-    // إشارة للتنقل
     private val _navSignal = mutableStateOf(0)
-    // النص المُراد عرضه
     private val _pendingText = mutableStateOf("")
     private val handler = Handler(Looper.getMainLooper())
 
@@ -106,7 +102,6 @@ class MainActivity : ComponentActivity() {
             if (clip != null && clip.itemCount > 0) {
                 val text = clip.getItemAt(0).text?.toString()
                 if (!text.isNullOrBlank()) {
-                    // نحفظ النص في الـ state مباشرة
                     _pendingText.value = text
                     _navSignal.value++
                     Toast.makeText(this, "تم جلب الرسالة!", Toast.LENGTH_SHORT).show()
