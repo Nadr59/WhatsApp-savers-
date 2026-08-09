@@ -294,7 +294,9 @@ class MessageViewModel @Inject constructor(
             0
         }
     }
-
+    suspend fun getMessageByIdOnce(id: Int): Message? {
+        return repo.getMessageById(id)
+    }
     // ═══ نسخ احتياطي تلقائي ═══
     private fun autoBackup() {
         viewModelScope.launch {
