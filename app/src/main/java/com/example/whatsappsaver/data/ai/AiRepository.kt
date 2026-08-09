@@ -55,6 +55,21 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         }
     }
 
+    private fun getErrorMessage(conn: HttpURLConnection): String {
+        return try {
+            val errorStream = conn.errorStream
+            if (errorStream != null) {
+                val errorText = errorStream.bufferedReader().readText()
+                val json = JSONObject(errorText)
+                json.optJSONObject("error")?.optString("message") ?: errorText.take(200)
+            } else {
+                "HTTP ${conn.responseCode}: ${conn.responseMessage}"
+            }
+        } catch (_: Exception) {
+            "HTTP ${conn.responseCode}: ${conn.responseMessage}"
+        }
+    }
+
     private fun callOpenAI(prompt: String): String {
         val url = URL("https://api.openai.com/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
@@ -79,7 +94,11 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             put("temperature", 0.7)
         }
 
-        OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+
+        if (conn.responseCode != 200) {
+            throw Exception(getErrorMessage(conn))
+        }
 
         val response = conn.inputStream.bufferedReader().readText()
         val json = JSONObject(response)
@@ -91,7 +110,10 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     }
 
     private fun callGemini(prompt: String): String {
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${settings.geminiKey}")
+        // ═══ نموذج مُحدَّث: gemini-2.0-flash ═══
+        val model = "gemini-2.0-flash"
+        val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=${settings.geminiKey.trim()}"
+        val url = URL(urlStr)
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "POST"
@@ -113,7 +135,11 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             })
         }
 
-        OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+
+        if (conn.responseCode != 200) {
+            throw Exception(getErrorMessage(conn))
+        }
 
         val response = conn.inputStream.bufferedReader().readText()
         val json = JSONObject(response)
@@ -149,7 +175,11 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             put("max_tokens", 1000)
         }
 
-        OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+
+        if (conn.responseCode != 200) {
+            throw Exception(getErrorMessage(conn))
+        }
 
         val response = conn.inputStream.bufferedReader().readText()
         val json = JSONObject(response)
@@ -161,7 +191,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     }
 
     private fun callCustom(prompt: String): String {
-        val baseUrl = settings.customUrl.trimEnd('/')
+        val baseUrl = settings.customUrl.trim().trimEnd('/')
         val url = URL("$baseUrl/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
@@ -184,7 +214,11 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             put("max_tokens", 1000)
         }
 
-        OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+
+        if (conn.responseCode != 200) {
+            throw Exception(getErrorMessage(conn))
+        }
 
         val response = conn.inputStream.bufferedReader().readText()
         val json = JSONObject(response)
