@@ -2,16 +2,16 @@ package com.example.whatsappsaver.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
 
@@ -20,17 +20,26 @@ import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
 fun AddMessageScreen(
     navController: NavController,
     sharedText: String = "",
-    viewModel: MessageViewModel = hiltViewModel()
+    editId: Int = -1,
+    editText: String = "",
+    editCategory: String = "عام",
+    editNotes: String = "",
+    viewModel: MessageViewModel
 ) {
-    var messageText by remember { mutableStateOf(sharedText) }
-    var category by remember { mutableStateOf("عام") }
-    var notes by remember { mutableStateOf("") }
+    // ═══ وضع التعديل أو الإضافة ═══
+    val isEditMode = editId > 0
+
+    var messageText by remember { mutableStateOf(if (isEditMode) editText else sharedText) }
+    var category by remember { mutableStateOf(if (isEditMode) editCategory else "عام") }
+    var notes by remember { mutableStateOf(if (isEditMode) editNotes else "") }
     val categories = listOf("عام", "عمل", "عائلة", "أصدقاء", "مهم", "أخرى")
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("حفظ رسالة") },
+                title = {
+                    Text(if (isEditMode) "تعديل الرسالة" else "حفظ رسالة")
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "رجوع")
@@ -47,8 +56,7 @@ fun AddMessageScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
-            // ===== الرسالة =====
+            // ═══ الرسالة ═══
             Text("الرسالة", style = MaterialTheme.typography.titleMedium)
 
             OutlinedTextField(
@@ -56,15 +64,15 @@ fun AddMessageScreen(
                 onValueChange = { messageText = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 100.dp, max = 200.dp),  // حد أقصى للارتفاع
+                    .heightIn(min = 100.dp, max = 200.dp),
                 placeholder = { Text("الرسالة المنسوخة...") },
-                maxLines = 8
+                maxLines = 8,
+                shape = RoundedCornerShape(12.dp)
             )
 
-            // ===== التصنيف =====
+            // ═══ التصنيف ═══
             Text("التصنيف", style = MaterialTheme.typography.titleMedium)
 
-            // صفوف الأزرار
             val rows = categories.chunked(3)
             rows.forEach { rowItems ->
                 Row(
@@ -77,17 +85,17 @@ fun AddMessageScreen(
                             selected = selected,
                             onClick = { category = cat },
                             label = { Text(cat) },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
-                    // ملء الفراغ لو العناصر أقل من 3
                     repeat(3 - rowItems.size) {
                         Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
 
-            // ===== الملاحظات =====
+            // ═══ الملاحظات ═══
             Text("ملاحظات", style = MaterialTheme.typography.titleMedium)
 
             OutlinedTextField(
@@ -97,34 +105,42 @@ fun AddMessageScreen(
                     .fillMaxWidth()
                     .heightIn(min = 60.dp, max = 120.dp),
                 placeholder = { Text("ملاحظات اختيارية...") },
-                maxLines = 3
+                maxLines = 3,
+                shape = RoundedCornerShape(12.dp)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ===== زر الحفظ =====
+            // ═══ زر الحفظ/التعديل ═══
             Button(
                 onClick = {
                     if (messageText.isNotBlank()) {
-                        viewModel.addMessage(
-                            text = messageText,
-                            cat = category,
-                            note = notes
-                        )
+                        if (isEditMode) {
+                            viewModel.updateMessage(editId, messageText, category, notes)
+                        } else {
+                            viewModel.addMessage(messageText, category, notes)
+                        }
                         navController.popBackStack()
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                enabled = messageText.isNotBlank()
+                enabled = messageText.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(Icons.Default.Save, contentDescription = null)
+                Icon(
+                    if (isEditMode) Icons.Default.Save else Icons.Default.Save,
+                    contentDescription = null
+                )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("حفظ الرسالة", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (isEditMode) "حفظ التعديلات" else "حفظ الرسالة",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
-            // مساحة في الأسفل عشان زر الحفظ ما يختفى
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
