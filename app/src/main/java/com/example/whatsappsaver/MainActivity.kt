@@ -1,5 +1,7 @@
 package com.example.whatsappsaver
 
+package com.example.whatsappsaver
+
 import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
@@ -18,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel          // ← هذا الناقص!
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -30,8 +33,8 @@ import com.example.whatsappsaver.ui.navigation.BottomNavItem
 import com.example.whatsappsaver.ui.navigation.Screen
 import com.example.whatsappsaver.ui.screens.*
 import com.example.whatsappsaver.ui.theme.WhatsAppSaverTheme
-import dagger.hilt.android.AndroidEntryPoint
 import com.example.whatsappsaver.ui.viewmodel.MessageViewModel
+import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
