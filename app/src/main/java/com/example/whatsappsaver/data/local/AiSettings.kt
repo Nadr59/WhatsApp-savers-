@@ -54,4 +54,13 @@ class AiSettings @Inject constructor(context: Context) {
     fun isConfigured(): Boolean {
         return getActiveKey().isNotBlank()
     }
+        fun getProviderName(): String {
+        return when (provider) {
+            "openai" -> "OpenAI"
+            "gemini" -> "Google Gemini"
+            "mistral" -> "Mistral AI"
+            "custom" -> "مخصص"
+            else -> "غير معروف"
+        }
+        }
 }
