@@ -6,6 +6,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -20,6 +21,9 @@ class ClipboardMonitorService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var whatsappOpen = false
     private var pendingReset: Runnable? = null
+    private lateinit var clipboardManager: ClipboardManager
+    private var lastClipText = ""
+    private var lastClipTime = 0L
 
     companion object {
         const val CHANNEL_ID = "wa_saver"
@@ -51,6 +55,12 @@ class ClipboardMonitorService : AccessibilityService() {
             "جاهز لمراقبة النسخ",
             false
         ))
+
+        // ═══ مراقبة الحافظة ═══
+        clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboardManager.addPrimaryClipChangedListener {
+            onClipboardChanged()
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -62,19 +72,62 @@ class ClipboardMonitorService : AccessibilityService() {
         val isWA = pkg.contains("whatsapp", ignoreCase = true)
 
         if (isWA) {
-            // WhatsApp مفتوح — ألغِ أي رجوع مخطط
             cancelPendingReset()
-
             if (!whatsappOpen) {
                 whatsappOpen = true
                 showWANotification()
             }
         } else {
-            // WhatsApp طار من الشاشة — انتظر 10 ثواني قبل الرجوع
             if (whatsappOpen) {
                 scheduleReset()
             }
         }
+    }
+
+    // ═══ قراءة الحافظة — بدون فحص WhatsApp ═══
+    private fun onClipboardChanged() {
+        val now = System.currentTimeMillis()
+        if (now - lastClipTime < 2000) return
+        lastClipTime = now
+
+        try {
+            val clip = clipboardManager.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                val text = clip.getItemAt(0).text?.toString()
+                if (!text.isNullOrBlank() && text != lastClipText) {
+                    lastClipText = text
+                    showSaveNotification(text)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun showSaveNotification(text: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = "SAVE_FROM_CLIPBOARD"
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pending = PendingIntent.getActivity(
+            this, System.currentTimeMillis().toInt(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val shortText = if (text.length > 80) text.take(80) + "..." else text
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_save)
+            .setContentTitle("تم نسخ رسالة!")
+            .setContentText(shortText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVibrate(longArrayOf(0, 300, 200, 300))
+            .addAction(android.R.drawable.ic_menu_save, "حفظ الآن", pending)
+            .build()
+
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(200, notification)
     }
 
     private fun showWANotification() {
@@ -102,7 +155,6 @@ class ClipboardMonitorService : AccessibilityService() {
             showIdleNotification()
             pendingReset = null
         }
-        // 10 ثواني — كافية إن المستخدم ينسخ ويضغط
         handler.postDelayed(pendingReset!!, 10000)
     }
 
