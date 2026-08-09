@@ -93,7 +93,12 @@ fun AiSettingsScreen(
                 }
             }
 
-            HorizontalDivider()
+            // ═══ فاصل ═══
+            Divider(
+                modifier = Modifier.fillMaxWidth(),
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+            )
 
             // ═══ زر إظهار/إخفاء المفاتيح ═══
             Row(verticalAlignment = Alignment.CenterVertically) {
