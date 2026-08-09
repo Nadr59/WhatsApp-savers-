@@ -61,7 +61,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             if (errorStream != null) {
                 val errorText = errorStream.bufferedReader().readText()
                 val json = JSONObject(errorText)
-                json.optJSONObject("error")?.optString("message") ?: errorText.take(200)
+                json.optJSONObject("error")?.optString("message") ?: errorText.take(300)
             } else {
                 "HTTP ${conn.responseCode}: ${conn.responseMessage}"
             }
@@ -70,57 +70,19 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         }
     }
 
-    private fun callOpenAI(prompt: String): String {
-        val url = URL("https://api.openai.com/v1/chat/completions")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer ${settings.openaiKey}")
-            connectTimeout = 30000
-            readTimeout = 30000
-            doOutput = true
-        }
-
-        val body = JSONObject().apply {
-            put("model", settings.customModel)
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", prompt)
-                })
-            })
-            put("max_tokens", 1000)
-            put("temperature", 0.7)
-        }
-
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
-
-        if (conn.responseCode != 200) {
-            throw Exception(getErrorMessage(conn))
-        }
-
-        val response = conn.inputStream.bufferedReader().readText()
-        val json = JSONObject(response)
-        return json.getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("message")
-            .getString("content")
-            .trim()
-    }
-
-        private fun callGemini(prompt: String): String {
+    private fun callGemini(prompt: String): String {
         val apiKey = settings.geminiKey.trim()
 
-        // ═══ نجرب نماذج متعددة ═══
+        // ═══ النماذج المجانية المتاحة أغسطس 2026 ═══
         val models = listOf(
             "gemini-2.5-flash",
-            "gemini-2.0-flash-lite",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b"
+            "gemini-3.6-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.1-flash-lite"
         )
 
-        var lastError: Exception? = null
+        val errors = mutableListOf<String>()
 
         for (model in models) {
             try {
@@ -147,38 +109,50 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
                     })
                 }
 
-                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+                    it.write(body.toString())
+                }
 
                 if (conn.responseCode != 200) {
                     val errorMsg = getErrorMessage(conn)
-                    lastError = Exception(errorMsg)
+                    errors.add("$model: $errorMsg")
 
-                    // إذا حصة — نجرب النموذج التالي
+                    // إذا حصة أو نموذج غير متاح — نجرب التالي
                     if (errorMsg.contains("quota", ignoreCase = true) ||
                         errorMsg.contains("429") ||
-                        errorMsg.contains("limit", ignoreCase = true)
+                        errorMsg.contains("limit", ignoreCase = true) ||
+                        errorMsg.contains("not available", ignoreCase = true) ||
+                        errorMsg.contains("not found", ignoreCase = true) ||
+                        errorMsg.contains("deprecated", ignoreCase = true)
                     ) {
                         continue
                     }
-                    // خطأ آخر — نرميه مباشرة
                     throw Exception(errorMsg)
                 }
 
                 val response = conn.inputStream.bufferedReader().readText()
                 val json = JSONObject(response)
-                return json.getJSONArray("candidates")
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text")
-                    .trim()
+
+                // استخراج النص من الاستجابة
+                val candidates = json.optJSONArray("candidates")
+                if (candidates != null && candidates.length() > 0) {
+                    val content = candidates.getJSONObject(0).optJSONObject("content")
+                    if (content != null) {
+                        val parts = content.optJSONArray("parts")
+                        if (parts != null && parts.length() > 0) {
+                            return parts.getJSONObject(0).getString("text").trim()
+                        }
+                    }
+                }
+                throw Exception("استجابة فارغة من النموذج $model")
 
             } catch (e: Exception) {
-                lastError = e
+                errors.add("$model: ${e.message}")
                 if (e.message?.contains("quota") == true ||
                     e.message?.contains("429") == true ||
-                    e.message?.contains("limit") == true
+                    e.message?.contains("limit") == true ||
+                    e.message?.contains("not available") == true ||
+                    e.message?.contains("not found") == true
                 ) {
                     continue
                 }
@@ -186,7 +160,55 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             }
         }
 
-        throw lastError ?: Exception("جميع النماذج غير متاحة حالياً. جرب مزود آخر أو أضف رصيد في Google AI Studio")
+        val errorSummary = errors.joinToString("\n") { "- $it" }
+        throw Exception(
+            "جميع النماذج غير متاحة:\n$errorSummary\n\n" +
+            "الحلول:\n" +
+            "1. أنشئ مفتاح جديد من aistudio.google.com/apikey\n" +
+            "2. جرب مزود آخر (OpenAI أو Mistral)\n" +
+            "3. أضف رصيد Google من ai.google.dev/pricing"
+        )
+    }
+
+    private fun callOpenAI(prompt: String): String {
+        val url = URL("https://api.openai.com/v1/chat/completions")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Authorization", "Bearer ${settings.openaiKey}")
+            connectTimeout = 30000
+            readTimeout = 30000
+            doOutput = true
+        }
+
+        val body = JSONObject().apply {
+            put("model", settings.customModel)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", prompt)
+                })
+            })
+            put("max_tokens", 1000)
+            put("temperature", 0.7)
+        }
+
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+            it.write(body.toString())
+        }
+
+        if (conn.responseCode != 200) {
+            throw Exception(getErrorMessage(conn))
+        }
+
+        val response = conn.inputStream.bufferedReader().readText()
+        val json = JSONObject(response)
+        return json.getJSONArray("choices")
+            .getJSONObject(0)
+            .getJSONObject("message")
+            .getString("content")
+            .trim()
     }
 
     private fun callMistral(prompt: String): String {
@@ -212,7 +234,9 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             put("max_tokens", 1000)
         }
 
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+            it.write(body.toString())
+        }
 
         if (conn.responseCode != 200) {
             throw Exception(getErrorMessage(conn))
@@ -251,7 +275,9 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             put("max_tokens", 1000)
         }
 
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+            it.write(body.toString())
+        }
 
         if (conn.responseCode != 200) {
             throw Exception(getErrorMessage(conn))
