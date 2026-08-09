@@ -20,17 +20,35 @@ fun AddMessageScreen(
     navController: NavController,
     sharedText: String = "",
     editId: Int = -1,
-    editText: String = "",
-    editCategory: String = "عام",
-    editNotes: String = "",
     viewModel: MessageViewModel
 ) {
     val isEditMode = editId > 0
 
-    var messageText by remember { mutableStateOf(if (isEditMode) editText else sharedText) }
-    var category by remember { mutableStateOf(if (isEditMode) editCategory else "عام") }
-    var notes by remember { mutableStateOf(if (isEditMode) editNotes else "") }
+    var messageText by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("عام") }
+    var notes by remember { mutableStateOf("") }
+    var loaded by remember { mutableStateOf(false) }
     val categories = listOf("عام", "عمل", "عائلة", "أصدقاء", "مهم", "أخرى")
+
+    // ═══ تحميل بيانات التعديل من قاعدة البيانات ═══
+    if (isEditMode && !loaded) {
+        LaunchedEffect(editId) {
+            val msg = viewModel.getMessageByIdOnce(editId)
+            if (msg != null) {
+                messageText = msg.messageText
+                category = msg.category
+                notes = msg.notes
+            }
+            loaded = true
+        }
+    }
+
+    // ═══ تحميل النص المشارك ═══
+    LaunchedEffect(Unit) {
+        if (!isEditMode && sharedText.isNotBlank() && messageText.isBlank()) {
+            messageText = sharedText
+        }
+    }
 
     Scaffold(
         topBar = {
