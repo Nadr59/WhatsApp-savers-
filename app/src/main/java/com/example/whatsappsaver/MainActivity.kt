@@ -5,7 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
+
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -205,14 +205,19 @@ fun MainApp(
 
             // ═══ تفاصيل الرسالة ═══
             composable(
-                route = Screen.MessageDetail.route,
-                arguments = listOf(navArgument("messageId") { type = NavType.IntType })
-            ) { entry ->
-                MessageDetailScreen(
-                    navController = navController,
-                    messageId = entry.arguments?.getInt("messageId") ?: 0,
-                    vm = sharedViewModel
-                )
+    route = Screen.AddMessage.route,
+    arguments = listOf(
+        navArgument("editId") { type = NavType.IntType; defaultValue = -1 }
+    )
+) { entry ->
+    val editId = entry.arguments?.getInt("editId") ?: -1
+
+    AddMessageScreen(
+        navController = navController,
+        sharedText = textForAddScreen,
+        editId = editId,
+        viewModel = sharedViewModel
+    )
             }
 
             // ═══ التصنيفات ═══
