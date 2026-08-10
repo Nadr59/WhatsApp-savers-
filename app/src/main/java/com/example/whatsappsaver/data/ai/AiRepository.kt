@@ -28,13 +28,17 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
 
             val prompt = buildPrompt(text, task, language)
 
+            // ═══ كل المزودين المدعومين ═══
             val result = when (settings.provider) {
+                "groq" -> callGroq(prompt)
                 "openrouter" -> callOpenRouter(prompt)
                 "openai" -> callOpenAI(prompt)
                 "gemini" -> callGemini(prompt)
                 "mistral" -> callMistral(prompt)
                 "custom" -> callCustom(prompt)
-                else -> return@withContext Result.failure(Exception("مزود غير معروف"))
+                else -> return@withContext Result.failure(
+                    Exception("مزود غير معروف: ${settings.provider}")
+                )
             }
 
             Result.success(result)
@@ -75,10 +79,52 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // ═══ OpenRouter — المتوافق مع OpenAI + نماذج مجانية ═══
+    // ═══ Groq — مجاني تماماً ═══
     // ═══════════════════════════════════════════════════════════
-        
-        
+    private fun callGroq(prompt: String): String {
+        val apiKey = settings.groqKey.trim()
+        val model = settings.groqModel.trim()
+
+        if (apiKey.isBlank()) {
+            throw Exception("مفتاح Groq فارغ. أنشئ مفتاح مجاني من:\nconsole.groq.com/keys")
+        }
+
+        val modelsToTry = mutableListOf<String>()
+        modelsToTry.add(model)
+
+        val fallbacks = listOf(
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
+            "gemma2-9b-it",
+            "mixtral-8x7b-32768"
+        )
+        for (fb in fallbacks) {
+            if (fb !in modelsToTry) modelsToTry.add(fb)
+        }
+
+        val errors = mutableListOf<String>()
+
+        for (m in modelsToTry) {
+            try {
+                val result = callOpenAICompatible(
+                    url = "https://api.groq.com/openai/v1/chat/completions",
+                    apiKey = apiKey,
+                    model = m,
+                    prompt = prompt,
+                    extraHeaders = emptyMap()
+                )
+                if (result.isNotBlank()) return result
+            } catch (e: Exception) {
+                errors.add("$m: ${e.message?.take(100)}")
+            }
+        }
+
+        throw Exception("فشل Groq:\n${errors.joinToString("\n") { "  - $it" }}")
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ═══ OpenRouter ═══
+    // ═══════════════════════════════════════════════════════════
     private fun callOpenRouter(prompt: String): String {
         val apiKey = settings.openrouterKey.trim()
         val model = settings.openrouterModel.trim()
@@ -87,133 +133,78 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             throw Exception("مفتاح OpenRouter فارغ")
         }
 
-        // ═══ النماذج بدون :free — تعمل بالرصيد المجاني $1 ═══
-        val modelsToTry = mutableListOf<String>()
-
-        // النموذج المختار (نظف :free إذا موجود)
         val cleanModel = model.removeSuffix(":free").trim()
+
+        val modelsToTry = mutableListOf<String>()
         if (cleanModel.isNotBlank()) modelsToTry.add(cleanModel)
 
-        // نماذج رخيصة جداً تعمل بالرصيد المجاني
-        val cheapModels = listOf(
+        val fallbacks = listOf(
             "google/gemini-2.0-flash-exp",
             "meta-llama/llama-3.1-8b-instruct",
             "mistralai/mistral-7b-instruct",
             "deepseek/deepseek-chat-v3-0324",
-            "nousresearch/hermes-3-llama-3.1-405b",
             "openai/gpt-3.5-turbo"
         )
-        for (m in cheapModels) {
-            if (m !in modelsToTry) modelsToTry.add(m)
+        for (fb in fallbacks) {
+            if (fb !in modelsToTry) modelsToTry.add(fb)
         }
 
         val errors = mutableListOf<String>()
 
         for (m in modelsToTry) {
             try {
-                val url = URL("https://openrouter.ai/api/v1/chat/completions")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                    setRequestProperty("Authorization", "Bearer $apiKey")
-                    setRequestProperty("HTTP-Referer", "https://whatsapp-saver.app")
-                    setRequestProperty("X-Title", "WhatsApp Saver")
-                    connectTimeout = 60000
-                    readTimeout = 60000
-                    doOutput = true
-                    doInput = true
-                }
-
-                val body = JSONObject().apply {
-                    put("model", m)
-                    put("messages", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("role", "user")
-                            put("content", prompt)
-                        })
-                    })
-                    put("max_tokens", 1000)
-                    put("temperature", 0.7)
-                }
-
-                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
-                    it.write(body.toString())
-                    it.flush()
-                }
-
-                if (conn.responseCode != 200) {
-                    val errorMsg = getErrorMessage(conn)
-                    conn.disconnect()
-                    errors.add("$m: ${errorMsg.take(100)}")
-                    continue
-                }
-
-                val response = conn.inputStream.bufferedReader().readText()
-                conn.disconnect()
-
-                val json = JSONObject(response)
-                val choices = json.optJSONArray("choices")
-                if (choices != null && choices.length() > 0) {
-                    val content = choices.getJSONObject(0)
-                        .optJSONObject("message")
-                        ?.optString("content", "")
-                    if (!content.isNullOrBlank()) {
-                        return content.trim()
-                    }
-                }
-                errors.add("$m: استجابة فارغة")
-
+                val result = callOpenAICompatible(
+                    url = "https://openrouter.ai/api/v1/chat/completions",
+                    apiKey = apiKey,
+                    model = m,
+                    prompt = prompt,
+                    extraHeaders = mapOf(
+                        "HTTP-Referer" to "https://whatsapp-saver.app",
+                        "X-Title" to "WhatsApp Saver"
+                    )
+                )
+                if (result.isNotBlank()) return result
             } catch (e: Exception) {
                 errors.add("$m: ${e.message?.take(100)}")
             }
         }
 
-        val errorSummary = errors.joinToString("\n") { "  - $it" }
-        throw Exception(
-            "فشل OpenRouter:\n$errorSummary\n\n" +
-            "النماذج المُجربة: ${modelsToTry.joinToString(", ")}\n\n" +
-            "تأكد أن:\n" +
-            "1. المفتاح صحيح من openrouter.ai/keys\n" +
-            "2. لديك رصيد (حتى \$1 يكفي)\n" +
-            "openrouter.ai/credits"
+        throw Exception("فشل OpenRouter:\n${errors.joinToString("\n") { "  - $it" }}")
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ═══ OpenAI ═══
+    // ═══════════════════════════════════════════════════════════
+    private fun callOpenAI(prompt: String): String {
+        return callOpenAICompatible(
+            url = "https://api.openai.com/v1/chat/completions",
+            apiKey = settings.openaiKey.trim(),
+            model = settings.customModel,
+            prompt = prompt,
+            extraHeaders = emptyMap()
         )
     }
-        
-        
+
     // ═══════════════════════════════════════════════════════════
     // ═══ Gemini ═══
     // ═══════════════════════════════════════════════════════════
     private fun callGemini(prompt: String): String {
         val apiKey = settings.geminiKey.trim()
+        if (apiKey.isBlank()) throw Exception("مفتاح Gemini فارغ")
 
-        if (apiKey.isBlank()) {
-            throw Exception("مفتاح Gemini فارغ")
-        }
-
-        val models = listOf(
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro"
-        )
-
+        val models = listOf("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro")
         val errors = mutableListOf<String>()
 
         for (model in models) {
             try {
                 val result = callGeminiModel(apiKey, model, prompt)
                 if (result.isNotBlank()) return result
-                errors.add("$model: استجابة فارغة")
             } catch (e: Exception) {
-                errors.add("$model: ${e.message}")
+                errors.add("$model: ${e.message?.take(100)}")
             }
         }
 
-        val errorSummary = errors.joinToString("\n") { "  - $it" }
-        throw Exception(
-            "فشل Gemini:\n$errorSummary\n\n" +
-            "الحل: استخدم OpenRouter (مجاني) من الإعدادات"
-        )
+        throw Exception("فشل Gemini:\n${errors.joinToString("\n") { "  - $it" }}")
     }
 
     private fun callGeminiModel(apiKey: String, model: String, prompt: String): String {
@@ -270,22 +261,57 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // ═══ OpenAI ═══
+    // ═══ Mistral ═══
     // ═══════════════════════════════════════════════════════════
-    private fun callOpenAI(prompt: String): String {
-        val url = URL("https://api.openai.com/v1/chat/completions")
-        val conn = url.openConnection() as HttpURLConnection
+    private fun callMistral(prompt: String): String {
+        return callOpenAICompatible(
+            url = "https://api.mistral.ai/v1/chat/completions",
+            apiKey = settings.mistralKey.trim(),
+            model = "mistral-tiny",
+            prompt = prompt,
+            extraHeaders = emptyMap()
+        )
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ═══ Custom ═══
+    // ═══════════════════════════════════════════════════════════
+    private fun callCustom(prompt: String): String {
+        val baseUrl = settings.customUrl.trim().trimEnd('/')
+        return callOpenAICompatible(
+            url = "$baseUrl/v1/chat/completions",
+            apiKey = settings.customKey.trim(),
+            model = settings.customModel,
+            prompt = prompt,
+            extraHeaders = emptyMap()
+        )
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ═══ دالة موحدة لجميع APIs المتوافقة مع OpenAI ═══
+    // ═══════════════════════════════════════════════════════════
+    private fun callOpenAICompatible(
+        url: String,
+        apiKey: String,
+        model: String,
+        prompt: String,
+        extraHeaders: Map<String, String>
+    ): String {
+        val urlObj = URL(url)
+        val conn = urlObj.openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("Authorization", "Bearer ${settings.openaiKey.trim()}")
+            setRequestProperty("Authorization", "Bearer $apiKey")
+            extraHeaders.forEach { (k, v) -> setRequestProperty(k, v) }
             connectTimeout = 60000
             readTimeout = 60000
             doOutput = true
+            doInput = true
         }
 
         val body = JSONObject().apply {
-            put("model", settings.customModel)
+            put("model", model)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
@@ -301,96 +327,25 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             it.flush()
         }
 
-        if (conn.responseCode != 200) throw Exception(getErrorMessage(conn))
+        if (conn.responseCode != 200) {
+            val errorMsg = getErrorMessage(conn)
+            conn.disconnect()
+            throw Exception(errorMsg)
+        }
 
         val response = conn.inputStream.bufferedReader().readText()
         conn.disconnect()
 
-        return JSONObject(response).getJSONArray("choices")
-            .getJSONObject(0).getJSONObject("message")
-            .getString("content").trim()
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // ═══ Mistral ═══
-    // ═══════════════════════════════════════════════════════════
-    private fun callMistral(prompt: String): String {
-        val url = URL("https://api.mistral.ai/v1/chat/completions")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("Authorization", "Bearer ${settings.mistralKey.trim()}")
-            connectTimeout = 60000
-            readTimeout = 60000
-            doOutput = true
+        val json = JSONObject(response)
+        val choices = json.optJSONArray("choices")
+        if (choices != null && choices.length() > 0) {
+            val content = choices.getJSONObject(0)
+                .optJSONObject("message")
+                ?.optString("content", "")
+            if (!content.isNullOrBlank()) {
+                return content.trim()
+            }
         }
-
-        val body = JSONObject().apply {
-            put("model", "mistral-tiny")
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", prompt)
-                })
-            })
-            put("max_tokens", 1000)
-        }
-
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
-            it.write(body.toString())
-            it.flush()
-        }
-
-        if (conn.responseCode != 200) throw Exception(getErrorMessage(conn))
-
-        val response = conn.inputStream.bufferedReader().readText()
-        conn.disconnect()
-
-        return JSONObject(response).getJSONArray("choices")
-            .getJSONObject(0).getJSONObject("message")
-            .getString("content").trim()
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // ═══ Custom ═══
-    // ═══════════════════════════════════════════════════════════
-    private fun callCustom(prompt: String): String {
-        val baseUrl = settings.customUrl.trim().trimEnd('/')
-        val url = URL("$baseUrl/v1/chat/completions")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("Authorization", "Bearer ${settings.customKey.trim()}")
-            connectTimeout = 60000
-            readTimeout = 60000
-            doOutput = true
-        }
-
-        val body = JSONObject().apply {
-            put("model", settings.customModel)
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", prompt)
-                })
-            })
-            put("max_tokens", 1000)
-        }
-
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
-            it.write(body.toString())
-            it.flush()
-        }
-
-        if (conn.responseCode != 200) throw Exception(getErrorMessage(conn))
-
-        val response = conn.inputStream.bufferedReader().readText()
-        conn.disconnect()
-
-        return JSONObject(response).getJSONArray("choices")
-            .getJSONObject(0).getJSONObject("message")
-            .getString("content").trim()
+        throw Exception("استجابة فارغة")
     }
 }
