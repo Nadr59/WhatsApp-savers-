@@ -10,7 +10,7 @@ class AiSettings @Inject constructor(context: Context) {
     private val prefs = context.getSharedPreferences("ai_settings", Context.MODE_PRIVATE)
 
     var provider: String
-        get() = prefs.getString("provider", "openai") ?: "openai"
+        get() = prefs.getString("provider", "openrouter") ?: "openrouter"
         set(value) = prefs.edit().putString("provider", value).apply()
 
     var openaiKey: String
@@ -24,6 +24,14 @@ class AiSettings @Inject constructor(context: Context) {
     var mistralKey: String
         get() = prefs.getString("mistral_key", "") ?: ""
         set(value) = prefs.edit().putString("mistral_key", value).apply()
+
+    var openrouterKey: String
+        get() = prefs.getString("openrouter_key", "") ?: ""
+        set(value) = prefs.edit().putString("openrouter_key", value).apply()
+
+    var openrouterModel: String
+        get() = prefs.getString("openrouter_model", "google/gemini-2.0-flash-exp:free") ?: "google/gemini-2.0-flash-exp:free"
+        set(value) = prefs.edit().putString("openrouter_model", value).apply()
 
     var customUrl: String
         get() = prefs.getString("custom_url", "") ?: ""
@@ -46,6 +54,7 @@ class AiSettings @Inject constructor(context: Context) {
             "openai" -> openaiKey
             "gemini" -> geminiKey
             "mistral" -> mistralKey
+            "openrouter" -> openrouterKey
             "custom" -> customKey
             else -> ""
         }
@@ -54,13 +63,4 @@ class AiSettings @Inject constructor(context: Context) {
     fun isConfigured(): Boolean {
         return getActiveKey().isNotBlank()
     }
-        fun getProviderName(): String {
-        return when (provider) {
-            "openai" -> "OpenAI"
-            "gemini" -> "Google Gemini"
-            "mistral" -> "Mistral AI"
-            "custom" -> "مخصص"
-            else -> "غير معروف"
-        }
-        }
 }
