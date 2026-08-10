@@ -29,8 +29,8 @@ class AiSettings @Inject constructor(context: Context) {
         get() = prefs.getString("openrouter_key", "") ?: ""
         set(value) = prefs.edit().putString("openrouter_key", value).apply()
 
-    var openrouterModel: String
-        get() = prefs.getString("openrouter_model", "google/gemini-2.0-flash-exp:free") ?: "google/gemini-2.0-flash-exp:free"
+         var openrouterModel: String
+        get() = prefs.getString("openrouter_model", "google/gemini-2.0-flash-exp") ?: "google/gemini-2.0-flash-exp"
         set(value) = prefs.edit().putString("openrouter_model", value).apply()
 
     var customUrl: String
