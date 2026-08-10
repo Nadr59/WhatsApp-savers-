@@ -77,118 +77,110 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     // ═══════════════════════════════════════════════════════════
     // ═══ OpenRouter — المتوافق مع OpenAI + نماذج مجانية ═══
     // ═══════════════════════════════════════════════════════════
-        private fun callOpenRouter(prompt: String): String {
+        
+        
+    private fun callOpenRouter(prompt: String): String {
         val apiKey = settings.openrouterKey.trim()
         val model = settings.openrouterModel.trim()
 
         if (apiKey.isBlank()) {
-            throw Exception("مفتاح OpenRouter فارغ. أضفه من الإعدادات")
+            throw Exception("مفتاح OpenRouter فارغ")
         }
 
-        // ═══ نجرب عدة أشكال للنموذج ═══
+        // ═══ النماذج بدون :free — تعمل بالرصيد المجاني $1 ═══
         val modelsToTry = mutableListOf<String>()
 
-        // النموذج المختار من المستخدم
-        modelsToTry.add(model)
+        // النموذج المختار (نظف :free إذا موجود)
+        val cleanModel = model.removeSuffix(":free").trim()
+        if (cleanModel.isNotBlank()) modelsToTry.add(cleanModel)
 
-        // إذا ينتهي بـ :free نجرب بدونه أيضاً
-        if (model.endsWith(":free")) {
-            modelsToTry.add(model.removeSuffix(":free"))
-        }
-
-        // نماذج احتياطية مجانية مؤكدة
-        val fallbacks = listOf(
-            "google/gemini-2.0-flash-exp:free",
-            "google/gemma-3-1b-it:free",
-            "deepseek/deepseek-chat-v3-0324:free",
-            "meta-llama/llama-3.1-8b-instruct:free",
-            "mistralai/mistral-7b-instruct:free"
+        // نماذج رخيصة جداً تعمل بالرصيد المجاني
+        val cheapModels = listOf(
+            "google/gemini-2.0-flash-exp",
+            "meta-llama/llama-3.1-8b-instruct",
+            "mistralai/mistral-7b-instruct",
+            "deepseek/deepseek-chat-v3-0324",
+            "nousresearch/hermes-3-llama-3.1-405b",
+            "openai/gpt-3.5-turbo"
         )
-
-        for (fb in fallbacks) {
-            if (fb !in modelsToTry) modelsToTry.add(fb)
+        for (m in cheapModels) {
+            if (m !in modelsToTry) modelsToTry.add(m)
         }
 
         val errors = mutableListOf<String>()
 
         for (m in modelsToTry) {
             try {
-                val result = callOpenRouterModel(apiKey, m, prompt)
-                if (result.isNotBlank()) return result
-            } catch (e: Exception) {
-                errors.add("$m: ${e.message}")
-                // إذا الخطأ عن الحساب (وليس النموذج) نوقف
-                val msg = e.message ?: ""
-                if (msg.contains("auth", ignoreCase = true) ||
-                    msg.contains("invalid", ignoreCase = true) ||
-                    msg.contains("key", ignoreCase = true)
-                ) {
-                    throw Exception("مفتاح OpenRouter غير صالح. تأكد من المفتاح من:\nopenrouter.ai/keys")
+                val url = URL("https://openrouter.ai/api/v1/chat/completions")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    setRequestProperty("Authorization", "Bearer $apiKey")
+                    setRequestProperty("HTTP-Referer", "https://whatsapp-saver.app")
+                    setRequestProperty("X-Title", "WhatsApp Saver")
+                    connectTimeout = 60000
+                    readTimeout = 60000
+                    doOutput = true
+                    doInput = true
                 }
+
+                val body = JSONObject().apply {
+                    put("model", m)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("content", prompt)
+                        })
+                    })
+                    put("max_tokens", 1000)
+                    put("temperature", 0.7)
+                }
+
+                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+                    it.write(body.toString())
+                    it.flush()
+                }
+
+                if (conn.responseCode != 200) {
+                    val errorMsg = getErrorMessage(conn)
+                    conn.disconnect()
+                    errors.add("$m: ${errorMsg.take(100)}")
+                    continue
+                }
+
+                val response = conn.inputStream.bufferedReader().readText()
+                conn.disconnect()
+
+                val json = JSONObject(response)
+                val choices = json.optJSONArray("choices")
+                if (choices != null && choices.length() > 0) {
+                    val content = choices.getJSONObject(0)
+                        .optJSONObject("message")
+                        ?.optString("content", "")
+                    if (!content.isNullOrBlank()) {
+                        return content.trim()
+                    }
+                }
+                errors.add("$m: استجابة فارغة")
+
+            } catch (e: Exception) {
+                errors.add("$m: ${e.message?.take(100)}")
             }
         }
 
         val errorSummary = errors.joinToString("\n") { "  - $it" }
         throw Exception(
-            "فشل الاتصال بـ OpenRouter:\n$errorSummary\n\n" +
-            "الحل:\n" +
-            "1. أضف رصيد (\$1) من: openrouter.ai/credits\n" +
-            "2. أو أدخل اسم النموذج يدوياً في الإعدادات\n" +
-            "3. اختر مزود آخر (Gemini أو OpenAI)"
+            "فشل OpenRouter:\n$errorSummary\n\n" +
+            "النماذج المُجربة: ${modelsToTry.joinToString(", ")}\n\n" +
+            "تأكد أن:\n" +
+            "1. المفتاح صحيح من openrouter.ai/keys\n" +
+            "2. لديك رصيد (حتى \$1 يكفي)\n" +
+            "openrouter.ai/credits"
         )
     }
-
-    private fun callOpenRouterModel(apiKey: String, model: String, prompt: String): String {
-        val url = URL("https://openrouter.ai/api/v1/chat/completions")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-            setRequestProperty("Authorization", "Bearer $apiKey")
-            setRequestProperty("HTTP-Referer", "https://whatsapp-saver.app")
-            setRequestProperty("X-Title", "WhatsApp Saver")
-            connectTimeout = 60000
-            readTimeout = 60000
-            doOutput = true
-            doInput = true
-        }
-
-        val body = JSONObject().apply {
-            put("model", model)
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", prompt)
-                })
-            })
-            put("max_tokens", 1000)
-            put("temperature", 0.7)
-        }
-
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
-            it.write(body.toString())
-            it.flush()
-        }
-
-        if (conn.responseCode != 200) {
-            val errorMsg = getErrorMessage(conn)
-            conn.disconnect()
-            throw Exception(errorMsg)
-        }
-
-        val response = conn.inputStream.bufferedReader().readText()
-        conn.disconnect()
-
-        val json = JSONObject(response)
-        val choices = json.optJSONArray("choices")
-        if (choices != null && choices.length() > 0) {
-            return choices.getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content")
-                .trim()
-        }
-        throw Exception("استجابة فارغة")
-    }
+        
+        
     // ═══════════════════════════════════════════════════════════
     // ═══ Gemini ═══
     // ═══════════════════════════════════════════════════════════
