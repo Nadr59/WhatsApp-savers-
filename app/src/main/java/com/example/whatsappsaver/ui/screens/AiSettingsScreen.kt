@@ -30,6 +30,8 @@ fun AiSettingsScreen(
     var mistralKey by remember { mutableStateOf(settings.mistralKey) }
     var openrouterKey by remember { mutableStateOf(settings.openrouterKey) }
     var openrouterModel by remember { mutableStateOf(settings.openrouterModel) }
+    var groqKey by remember { mutableStateOf(settings.groqKey) }
+    var groqModel by remember { mutableStateOf(settings.groqModel) }
     var customUrl by remember { mutableStateOf(settings.customUrl) }
     var customKey by remember { mutableStateOf(settings.customKey) }
     var customModel by remember { mutableStateOf(settings.customModel) }
@@ -37,7 +39,8 @@ fun AiSettingsScreen(
     var saved by remember { mutableStateOf(false) }
 
     val providers = listOf(
-        "openrouter" to "OpenRouter (مجاني)",
+        "groq" to "Groq (مجاني - الأسرع)",
+        "openrouter" to "OpenRouter",
         "openai" to "OpenAI (ChatGPT)",
         "gemini" to "Google Gemini",
         "mistral" to "Mistral AI",
@@ -88,7 +91,10 @@ fun AiSettingsScreen(
                             onClick = { provider = key; saved = false }
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(name, fontWeight = if (provider == key) FontWeight.Bold else FontWeight.Normal)
+                        Text(
+                            name,
+                            fontWeight = if (provider == key) FontWeight.Bold else FontWeight.Normal
+                        )
                         if (provider == key && key == settings.provider && settings.isConfigured()) {
                             Spacer(Modifier.weight(1f))
                             Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
@@ -103,7 +109,6 @@ fun AiSettingsScreen(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
             )
 
-            // ═══ إظهار/إخفاء المفاتيح ═══
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("مفاتيح API:", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
@@ -115,28 +120,103 @@ fun AiSettingsScreen(
                 }
             }
 
-            // ═══ حقول المفاتيح ═══
+            // ═══ حقول كل مزود ═══
             when (provider) {
-                
-                                 "openrouter" -> {
-                    // ═══ بطاقة مساعدة ═══
+
+                // ═══════════════════════════════════════════
+                // ═══ Groq ═══
+                // ═══════════════════════════════════════════
+                "groq" -> {
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                         ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             Text(
-                                "OpenRouter — وصول لعدة نماذج",
+                                "Groq — مجاني تماماً وسريع جداً",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text("1. سجل على console.groq.com", style = MaterialTheme.typography.bodySmall)
+                            Text("2. أنشئ مفتاح من: console.groq.com/keys", style = MaterialTheme.typography.bodySmall)
+                            Text("3. مجاني بدون أي رصيد!", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
+                    ApiKeyField(
+                        label = "Groq API Key",
+                        value = groqKey,
+                        onValueChange = { groqKey = it; saved = false },
+                        showKey = showKeys,
+                        placeholder = "gsk_..."
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+                    Text("النموذج:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+
+                    val groqModels = listOf(
+                        "llama-3.1-8b-instant" to "Llama 3.1 8B (سريع)",
+                        "llama-3.3-70b-versatile" to "Llama 3.3 70B (أفضل جودة)",
+                        "gemma2-9b-it" to "Gemma 2 9B",
+                        "mixtral-8x7b-32768" to "Mixtral 8x7B"
+                    )
+
+                    var groqExpanded by remember { mutableStateOf(false) }
+
+                    ExposedDropdownMenuBox(
+                        expanded = groqExpanded,
+                        onExpandedChange = { groqExpanded = !groqExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = groqModels.find { it.first == groqModel }?.second ?: groqModel,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(groqExpanded) },
+                            shape = RoundedCornerShape(12.dp),
+                            label = { Text("اختر النموذج") }
+                        )
+                        ExposedDropdownMenu(
+                            expanded = groqExpanded,
+                            onDismissRequest = { groqExpanded = false }
+                        ) {
+                            groqModels.forEach { (modelId, modelName) ->
+                                DropdownMenuItem(
+                                    text = { Text(modelName) },
+                                    onClick = {
+                                        groqModel = modelId
+                                        groqExpanded = false
+                                        saved = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ═══════════════════════════════════════════
+                // ═══ OpenRouter ═══
+                // ═══════════════════════════════════════════
+                "openrouter" -> {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                "OpenRouter",
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(Modifier.height(4.dp))
                             Text("1. سجل على openrouter.ai", style = MaterialTheme.typography.bodySmall)
                             Text("2. أنشئ مفتاح من: openrouter.ai/keys", style = MaterialTheme.typography.bodySmall)
-                            Text("3. أضف رصيد (\$1) من: openrouter.ai/credits", style = MaterialTheme.typography.bodySmall)
-                            Text("4. أو جرب النماذج المجانية أولاً", style = MaterialTheme.typography.bodySmall)
+                            Text("3. أضف رصيد من: openrouter.ai/credits", style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
@@ -148,46 +228,42 @@ fun AiSettingsScreen(
                         placeholder = "sk-or-v1-..."
                     )
 
-                    // ═══ اختيار النموذج ═══
                     Spacer(Modifier.height(4.dp))
                     Text("النموذج:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
 
-                                         val orModels = listOf(
-                        "google/gemini-2.0-flash-exp" to "Gemini 2.0 Flash (رخيص)",
-                        "meta-llama/llama-3.1-8b-instruct" to "Llama 3.1 8B (رخيص جداً)",
-                        "mistralai/mistral-7b-instruct" to "Mistral 7B (رخيص جداً)",
+                    val orModels = listOf(
+                        "google/gemini-2.0-flash-exp" to "Gemini 2.0 Flash",
+                        "meta-llama/llama-3.1-8b-instruct" to "Llama 3.1 8B",
+                        "mistralai/mistral-7b-instruct" to "Mistral 7B",
                         "deepseek/deepseek-chat-v3-0324" to "DeepSeek V3",
-                        "openai/gpt-3.5-turbo" to "GPT-3.5 Turbo (رخيص)"
+                        "openai/gpt-3.5-turbo" to "GPT-3.5 Turbo"
                     )
 
-                    var expanded by remember { mutableStateOf(false) }
+                    var orExpanded by remember { mutableStateOf(false) }
 
                     ExposedDropdownMenuBox(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = !expanded }
+                        expanded = orExpanded,
+                        onExpandedChange = { orExpanded = !orExpanded }
                     ) {
                         OutlinedTextField(
-                            value = freeModels.find { it.first == openrouterModel }?.second
-                                ?: openrouterModel,
+                            value = orModels.find { it.first == openrouterModel }?.second ?: openrouterModel,
                             onValueChange = {},
                             readOnly = true,
                             modifier = Modifier.fillMaxWidth().menuAnchor(),
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(orExpanded) },
                             shape = RoundedCornerShape(12.dp),
                             label = { Text("اختر النموذج") }
                         )
                         ExposedDropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
+                            expanded = orExpanded,
+                            onDismissRequest = { orExpanded = false }
                         ) {
-                            freeModels.forEach { (modelId, modelName) ->
+                            orModels.forEach { (modelId, modelName) ->
                                 DropdownMenuItem(
-                                    text = {
-                                        Text(modelName, style = MaterialTheme.typography.bodySmall)
-                                    },
+                                    text = { Text(modelName) },
                                     onClick = {
                                         openrouterModel = modelId
-                                        expanded = false
+                                        orExpanded = false
                                         saved = false
                                     }
                                 )
@@ -195,19 +271,20 @@ fun AiSettingsScreen(
                         }
                     }
 
-                    // ═══ إدخال يدوي ═══
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = openrouterModel,
                         onValueChange = { openrouterModel = it; saved = false },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("أو أدخل اسم النموذج يدوياً") },
-                        placeholder = { Text("google/gemini-2.0-flash-exp:free") },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
 
+                // ═══════════════════════════════════════════
+                // ═══ OpenAI ═══
+                // ═══════════════════════════════════════════
                 "openai" -> {
                     ApiKeyField(
                         label = "OpenAI API Key",
@@ -218,6 +295,9 @@ fun AiSettingsScreen(
                     )
                 }
 
+                // ═══════════════════════════════════════════
+                // ═══ Gemini ═══
+                // ═══════════════════════════════════════════
                 "gemini" -> {
                     Card(
                         colors = CardDefaults.cardColors(
@@ -226,7 +306,7 @@ fun AiSettingsScreen(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            "ملاحظة: قد تكون حصة المجانية مستنفدة. يُنصح باستخدام OpenRouter بدلاً منه",
+                            "ملاحظة: قد تكون حصة المجانية مستنفدة",
                             Modifier.padding(12.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
@@ -241,6 +321,9 @@ fun AiSettingsScreen(
                     )
                 }
 
+                // ═══════════════════════════════════════════
+                // ═══ Mistral ═══
+                // ═══════════════════════════════════════════
                 "mistral" -> {
                     ApiKeyField(
                         label = "Mistral API Key",
@@ -251,6 +334,9 @@ fun AiSettingsScreen(
                     )
                 }
 
+                // ═══════════════════════════════════════════
+                // ═══ Custom ═══
+                // ═══════════════════════════════════════════
                 "custom" -> {
                     OutlinedTextField(
                         value = customUrl,
@@ -287,9 +373,8 @@ fun AiSettingsScreen(
                 onClick = {
                     viewModel.saveAiProvider(provider)
                     when (provider) {
-                        "openrouter" -> {
-                            viewModel.saveOpenRouterConfig(openrouterKey, openrouterModel)
-                        }
+                        "groq" -> viewModel.saveGroqConfig(groqKey, groqModel)
+                        "openrouter" -> viewModel.saveOpenRouterConfig(openrouterKey, openrouterModel)
                         "openai" -> viewModel.saveOpenAiKey(openaiKey)
                         "gemini" -> viewModel.saveGeminiKey(geminiKey)
                         "mistral" -> viewModel.saveMistralKey(mistralKey)
