@@ -28,6 +28,8 @@ fun AiSettingsScreen(
     var openaiKey by remember { mutableStateOf(settings.openaiKey) }
     var geminiKey by remember { mutableStateOf(settings.geminiKey) }
     var mistralKey by remember { mutableStateOf(settings.mistralKey) }
+    var openrouterKey by remember { mutableStateOf(settings.openrouterKey) }
+    var openrouterModel by remember { mutableStateOf(settings.openrouterModel) }
     var customUrl by remember { mutableStateOf(settings.customUrl) }
     var customKey by remember { mutableStateOf(settings.customKey) }
     var customModel by remember { mutableStateOf(settings.customModel) }
@@ -35,6 +37,7 @@ fun AiSettingsScreen(
     var saved by remember { mutableStateOf(false) }
 
     val providers = listOf(
+        "openrouter" to "OpenRouter (مجاني)",
         "openai" to "OpenAI (ChatGPT)",
         "gemini" to "Google Gemini",
         "mistral" to "Mistral AI",
@@ -63,6 +66,7 @@ fun AiSettingsScreen(
         ) {
             // ═══ اختيار المزود ═══
             Text("مزود الخدمة:", fontWeight = FontWeight.Bold)
+
             providers.forEach { (key, name) ->
                 Card(
                     onClick = { provider = key; saved = false },
@@ -93,14 +97,13 @@ fun AiSettingsScreen(
                 }
             }
 
-            // ═══ فاصل ═══
             Divider(
                 modifier = Modifier.fillMaxWidth(),
                 thickness = 1.dp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
             )
 
-            // ═══ زر إظهار/إخفاء المفاتيح ═══
+            // ═══ إظهار/إخفاء المفاتيح ═══
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("مفاتيح API:", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
@@ -114,6 +117,78 @@ fun AiSettingsScreen(
 
             // ═══ حقول المفاتيح ═══
             when (provider) {
+                "openrouter" -> {
+                    // ═══ بطاقة مساعدة ═══
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                "OpenRouter — مجاني",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text("1. أنشئ حساب على openrouter.ai", style = MaterialTheme.typography.bodySmall)
+                            Text("2. أنشئ مفتاح من: openrouter.ai/keys", style = MaterialTheme.typography.bodySmall)
+                            Text("3. اختر نموذج مجاني (ينتهي بـ :free)", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
+                    ApiKeyField(
+                        label = "OpenRouter API Key",
+                        value = openrouterKey,
+                        onValueChange = { openrouterKey = it; saved = false },
+                        showKey = showKeys,
+                        placeholder = "sk-or-v1-..."
+                    )
+
+                    // ═══ اختيار النموذج ═══
+                    Text("النموذج:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+
+                    val freeModels = listOf(
+                        "google/gemini-2.0-flash-exp:free" to "Gemini 2.0 Flash (مجاني)",
+                        "meta-llama/llama-3.1-8b-instruct:free" to "Llama 3.1 8B (مجاني)",
+                        "mistralai/mistral-7b-instruct:free" to "Mistral 7B (مجاني)",
+                        "deepseek/deepseek-chat-v3-0324:free" to "DeepSeek V3 (مجاني)",
+                        "qwen/qwen3-235b-a22b:free" to "Qwen3 235B (مجاني)"
+                    )
+
+                    var expanded by remember { mutableStateOf(false) }
+
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
+                    ) {
+                        OutlinedTextField(
+                            value = freeModels.find { it.first == openrouterModel }?.second ?: openrouterModel,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            freeModels.forEach { (modelId, modelName) ->
+                                DropdownMenuItem(
+                                    text = { Text(modelName, style = MaterialTheme.typography.bodySmall) },
+                                    onClick = {
+                                        openrouterModel = modelId
+                                        expanded = false
+                                        saved = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 "openai" -> {
                     ApiKeyField(
                         label = "OpenAI API Key",
@@ -123,7 +198,21 @@ fun AiSettingsScreen(
                         placeholder = "sk-..."
                     )
                 }
+
                 "gemini" -> {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            "ملاحظة: قد تكون حصة المجانية مستنفدة. يُنصح باستخدام OpenRouter بدلاً منه",
+                            Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     ApiKeyField(
                         label = "Gemini API Key",
                         value = geminiKey,
@@ -132,6 +221,7 @@ fun AiSettingsScreen(
                         placeholder = "AIza..."
                     )
                 }
+
                 "mistral" -> {
                     ApiKeyField(
                         label = "Mistral API Key",
@@ -141,6 +231,7 @@ fun AiSettingsScreen(
                         placeholder = "مفتاح Mistral"
                     )
                 }
+
                 "custom" -> {
                     OutlinedTextField(
                         value = customUrl,
@@ -177,6 +268,9 @@ fun AiSettingsScreen(
                 onClick = {
                     viewModel.saveAiProvider(provider)
                     when (provider) {
+                        "openrouter" -> {
+                            viewModel.saveOpenRouterConfig(openrouterKey, openrouterModel)
+                        }
                         "openai" -> viewModel.saveOpenAiKey(openaiKey)
                         "gemini" -> viewModel.saveGeminiKey(geminiKey)
                         "mistral" -> viewModel.saveMistralKey(mistralKey)
@@ -204,22 +298,6 @@ fun AiSettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("تم الحفظ بنجاح!", color = MaterialTheme.colorScheme.primary)
                     }
-                }
-            }
-
-            // ═══ معلومات ═══
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("كيف تحصل على مفتاح API:", fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Text("OpenAI: platform.openai.com/api-keys", style = MaterialTheme.typography.bodySmall)
-                    Text("Gemini: makersuite.google.com/app/apikey", style = MaterialTheme.typography.bodySmall)
-                    Text("Mistral: console.mistral.ai", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
