@@ -117,7 +117,8 @@ fun AiSettingsScreen(
 
             // ═══ حقول المفاتيح ═══
             when (provider) {
-                "openrouter" -> {
+                
+                                 "openrouter" -> {
                     // ═══ بطاقة مساعدة ═══
                     Card(
                         colors = CardDefaults.cardColors(
@@ -127,14 +128,15 @@ fun AiSettingsScreen(
                     ) {
                         Column(Modifier.padding(16.dp)) {
                             Text(
-                                "OpenRouter — مجاني",
+                                "OpenRouter — وصول لعدة نماذج",
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(Modifier.height(4.dp))
-                            Text("1. أنشئ حساب على openrouter.ai", style = MaterialTheme.typography.bodySmall)
+                            Text("1. سجل على openrouter.ai", style = MaterialTheme.typography.bodySmall)
                             Text("2. أنشئ مفتاح من: openrouter.ai/keys", style = MaterialTheme.typography.bodySmall)
-                            Text("3. اختر نموذج مجاني (ينتهي بـ :free)", style = MaterialTheme.typography.bodySmall)
+                            Text("3. أضف رصيد (\$1) من: openrouter.ai/credits", style = MaterialTheme.typography.bodySmall)
+                            Text("4. أو جرب النماذج المجانية أولاً", style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
@@ -147,14 +149,18 @@ fun AiSettingsScreen(
                     )
 
                     // ═══ اختيار النموذج ═══
+                    Spacer(Modifier.height(4.dp))
                     Text("النموذج:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
 
                     val freeModels = listOf(
                         "google/gemini-2.0-flash-exp:free" to "Gemini 2.0 Flash (مجاني)",
+                        "google/gemma-3-1b-it:free" to "Gemma 3 1B (مجاني)",
+                        "deepseek/deepseek-chat-v3-0324:free" to "DeepSeek V3 (مجاني)",
                         "meta-llama/llama-3.1-8b-instruct:free" to "Llama 3.1 8B (مجاني)",
                         "mistralai/mistral-7b-instruct:free" to "Mistral 7B (مجاني)",
-                        "deepseek/deepseek-chat-v3-0324:free" to "DeepSeek V3 (مجاني)",
-                        "qwen/qwen3-235b-a22b:free" to "Qwen3 235B (مجاني)"
+                        "qwen/qwen3-235b-a22b" to "Qwen3 235B (مدفوع)",
+                        "openai/gpt-4o-mini" to "GPT-4o Mini (مدفوع)",
+                        "anthropic/claude-3.5-sonnet" to "Claude 3.5 Sonnet (مدفوع)"
                     )
 
                     var expanded by remember { mutableStateOf(false) }
@@ -164,12 +170,14 @@ fun AiSettingsScreen(
                         onExpandedChange = { expanded = !expanded }
                     ) {
                         OutlinedTextField(
-                            value = freeModels.find { it.first == openrouterModel }?.second ?: openrouterModel,
+                            value = freeModels.find { it.first == openrouterModel }?.second
+                                ?: openrouterModel,
                             onValueChange = {},
                             readOnly = true,
                             modifier = Modifier.fillMaxWidth().menuAnchor(),
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            label = { Text("اختر النموذج") }
                         )
                         ExposedDropdownMenu(
                             expanded = expanded,
@@ -177,7 +185,9 @@ fun AiSettingsScreen(
                         ) {
                             freeModels.forEach { (modelId, modelName) ->
                                 DropdownMenuItem(
-                                    text = { Text(modelName, style = MaterialTheme.typography.bodySmall) },
+                                    text = {
+                                        Text(modelName, style = MaterialTheme.typography.bodySmall)
+                                    },
                                     onClick = {
                                         openrouterModel = modelId
                                         expanded = false
@@ -187,6 +197,18 @@ fun AiSettingsScreen(
                             }
                         }
                     }
+
+                    // ═══ إدخال يدوي ═══
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = openrouterModel,
+                        onValueChange = { openrouterModel = it; saved = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("أو أدخل اسم النموذج يدوياً") },
+                        placeholder = { Text("google/gemini-2.0-flash-exp:free") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
 
                 "openai" -> {
