@@ -152,15 +152,12 @@ fun AiSettingsScreen(
                     Spacer(Modifier.height(4.dp))
                     Text("النموذج:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
 
-                    val freeModels = listOf(
-                        "google/gemini-2.0-flash-exp:free" to "Gemini 2.0 Flash (مجاني)",
-                        "google/gemma-3-1b-it:free" to "Gemma 3 1B (مجاني)",
-                        "deepseek/deepseek-chat-v3-0324:free" to "DeepSeek V3 (مجاني)",
-                        "meta-llama/llama-3.1-8b-instruct:free" to "Llama 3.1 8B (مجاني)",
-                        "mistralai/mistral-7b-instruct:free" to "Mistral 7B (مجاني)",
-                        "qwen/qwen3-235b-a22b" to "Qwen3 235B (مدفوع)",
-                        "openai/gpt-4o-mini" to "GPT-4o Mini (مدفوع)",
-                        "anthropic/claude-3.5-sonnet" to "Claude 3.5 Sonnet (مدفوع)"
+                                         val orModels = listOf(
+                        "google/gemini-2.0-flash-exp" to "Gemini 2.0 Flash (رخيص)",
+                        "meta-llama/llama-3.1-8b-instruct" to "Llama 3.1 8B (رخيص جداً)",
+                        "mistralai/mistral-7b-instruct" to "Mistral 7B (رخيص جداً)",
+                        "deepseek/deepseek-chat-v3-0324" to "DeepSeek V3",
+                        "openai/gpt-3.5-turbo" to "GPT-3.5 Turbo (رخيص)"
                     )
 
                     var expanded by remember { mutableStateOf(false) }
