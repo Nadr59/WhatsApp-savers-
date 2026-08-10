@@ -10,7 +10,7 @@ class AiSettings @Inject constructor(context: Context) {
     private val prefs = context.getSharedPreferences("ai_settings", Context.MODE_PRIVATE)
 
     var provider: String
-        get() = prefs.getString("provider", "openrouter") ?: "openrouter"
+        get() = prefs.getString("provider", "groq") ?: "groq"
         set(value) = prefs.edit().putString("provider", value).apply()
 
     var openaiKey: String
@@ -29,9 +29,17 @@ class AiSettings @Inject constructor(context: Context) {
         get() = prefs.getString("openrouter_key", "") ?: ""
         set(value) = prefs.edit().putString("openrouter_key", value).apply()
 
-         var openrouterModel: String
+    var openrouterModel: String
         get() = prefs.getString("openrouter_model", "google/gemini-2.0-flash-exp") ?: "google/gemini-2.0-flash-exp"
         set(value) = prefs.edit().putString("openrouter_model", value).apply()
+
+    var groqKey: String
+        get() = prefs.getString("groq_key", "") ?: ""
+        set(value) = prefs.edit().putString("groq_key", value).apply()
+
+    var groqModel: String
+        get() = prefs.getString("groq_model", "llama-3.1-8b-instant") ?: "llama-3.1-8b-instant"
+        set(value) = prefs.edit().putString("groq_model", value).apply()
 
     var customUrl: String
         get() = prefs.getString("custom_url", "") ?: ""
@@ -55,6 +63,7 @@ class AiSettings @Inject constructor(context: Context) {
             "gemini" -> geminiKey
             "mistral" -> mistralKey
             "openrouter" -> openrouterKey
+            "groq" -> groqKey
             "custom" -> customKey
             else -> ""
         }
