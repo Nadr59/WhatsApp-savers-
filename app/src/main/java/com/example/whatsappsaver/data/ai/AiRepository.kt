@@ -29,6 +29,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             val prompt = buildPrompt(text, task, language)
 
             val result = when (settings.provider) {
+                "openrouter" -> callOpenRouter(prompt)
                 "openai" -> callOpenAI(prompt)
                 "gemini" -> callGemini(prompt)
                 "mistral" -> callMistral(prompt)
@@ -74,16 +75,78 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // ═══ Gemini — نماذج حقيقية فقط + تشخيص واضح ═══
+    // ═══ OpenRouter — المتوافق مع OpenAI + نماذج مجانية ═══
+    // ═══════════════════════════════════════════════════════════
+    private fun callOpenRouter(prompt: String): String {
+        val apiKey = settings.openrouterKey.trim()
+        val model = settings.openrouterModel.trim()
+
+        if (apiKey.isBlank()) {
+            throw Exception("مفتاح OpenRouter فارغ. أضفه من الإعدادات")
+        }
+
+        val url = URL("https://openrouter.ai/api/v1/chat/completions")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("Authorization", "Bearer $apiKey")
+            setRequestProperty("HTTP-Referer", "https://whatsapp-saver.app")
+            setRequestProperty("X-Title", "WhatsApp Saver")
+            connectTimeout = 60000
+            readTimeout = 60000
+            doOutput = true
+            doInput = true
+        }
+
+        val body = JSONObject().apply {
+            put("model", model)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", prompt)
+                })
+            })
+            put("max_tokens", 1000)
+            put("temperature", 0.7)
+        }
+
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+            it.write(body.toString())
+            it.flush()
+        }
+
+        if (conn.responseCode != 200) {
+            val errorMsg = getErrorMessage(conn)
+            conn.disconnect()
+            throw Exception("OpenRouter: $errorMsg\n\nالنموذج: $model")
+        }
+
+        val response = conn.inputStream.bufferedReader().readText()
+        conn.disconnect()
+
+        val json = JSONObject(response)
+        val choices = json.optJSONArray("choices")
+        if (choices != null && choices.length() > 0) {
+            return choices.getJSONObject(0)
+                .getJSONObject("message")
+                .getString("content")
+                .trim()
+        }
+
+        throw Exception("استجابة فارغة من OpenRouter")
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ═══ Gemini ═══
     // ═══════════════════════════════════════════════════════════
     private fun callGemini(prompt: String): String {
         val apiKey = settings.geminiKey.trim()
 
         if (apiKey.isBlank()) {
-            throw Exception("مفتاح Gemini فارغ. أضف المفتاح من الإعدادات")
+            throw Exception("مفتاح Gemini فارغ")
         }
 
-        // ═══ النماذج المؤكدة فعلياً في Google API ═══
         val models = listOf(
             "gemini-2.0-flash",
             "gemini-1.5-flash",
@@ -95,31 +158,22 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         for (model in models) {
             try {
                 val result = callGeminiModel(apiKey, model, prompt)
-                if (result.isNotBlank()) {
-                    return result
-                }
+                if (result.isNotBlank()) return result
                 errors.add("$model: استجابة فارغة")
             } catch (e: Exception) {
-                val msg = e.message ?: "خطأ غير معروف"
-                errors.add("$model: $msg")
+                errors.add("$model: ${e.message}")
             }
         }
 
-        // ═══ جميع النماذج فشلت — رسالة واضحة ═══
         val errorSummary = errors.joinToString("\n") { "  - $it" }
         throw Exception(
-            "فشل الاتصال بـ Gemini:\n$errorSummary\n\n" +
-            "الحل الأسرع:\n" +
-            "1. أنشئ مفتاح جديد من:\n" +
-            "   aistudio.google.com/apikey\n" +
-            "2. أو جرب مزود OpenAI أو Mistral\n" +
-            "   من إعدادات التطبيق"
+            "فشل Gemini:\n$errorSummary\n\n" +
+            "الحل: استخدم OpenRouter (مجاني) من الإعدادات"
         )
     }
 
     private fun callGeminiModel(apiKey: String, model: String, prompt: String): String {
-        val urlStr = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
-        val url = URL(urlStr)
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey")
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "POST"
@@ -127,7 +181,6 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             connectTimeout = 60000
             readTimeout = 60000
             doOutput = true
-            doInput = true
         }
 
         val body = JSONObject().apply {
@@ -135,9 +188,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
                 put(JSONObject().apply {
                     put("role", "user")
                     put("parts", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("text", prompt)
-                        })
+                        put(JSONObject().apply { put("text", prompt) })
                     })
                 })
             })
@@ -147,57 +198,31 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             })
         }
 
-        try {
-            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
-                it.write(body.toString())
-                it.flush()
-            }
-        } catch (e: Exception) {
-            throw Exception("فشل إرسال الطلب: ${e.message}")
+        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+            it.write(body.toString())
+            it.flush()
         }
 
-        val responseCode = conn.responseCode
-
-        if (responseCode != 200) {
-            val errorMsg = getErrorMessage(conn)
+        if (conn.responseCode != 200) {
+            val msg = getErrorMessage(conn)
             conn.disconnect()
-            throw Exception(errorMsg)
+            throw Exception(msg)
         }
 
-        return try {
-            val responseText = conn.inputStream.bufferedReader().readText()
-            conn.disconnect()
+        val response = conn.inputStream.bufferedReader().readText()
+        conn.disconnect()
 
-            val json = JSONObject(responseText)
-            val candidates = json.optJSONArray("candidates")
-
-            if (candidates == null || candidates.length() == 0) {
-                throw Exception("لا توجد نتائج")
-            }
-
-            val content = candidates.getJSONObject(0)
+        val json = JSONObject(response)
+        val candidates = json.optJSONArray("candidates")
+        if (candidates != null && candidates.length() > 0) {
+            val parts = candidates.getJSONObject(0)
                 .optJSONObject("content")
-
-            if (content == null) {
-                throw Exception("محتوى فارغ")
+                ?.optJSONArray("parts")
+            if (parts != null && parts.length() > 0) {
+                return parts.getJSONObject(0).getString("text").trim()
             }
-
-            val parts = content.optJSONArray("parts")
-
-            if (parts == null || parts.length() == 0) {
-                throw Exception("أجزاء فارغة")
-            }
-
-            parts.getJSONObject(0).getString("text").trim()
-
-        } catch (e: Exception) {
-            if (e.message?.contains("text") == true &&
-                e.message?.contains("Empty") == true
-            ) {
-                throw Exception("استجابة فارغة")
-            }
-            throw e
         }
+        throw Exception("استجابة فارغة")
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -232,19 +257,14 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             it.flush()
         }
 
-        if (conn.responseCode != 200) {
-            throw Exception(getErrorMessage(conn))
-        }
+        if (conn.responseCode != 200) throw Exception(getErrorMessage(conn))
 
         val response = conn.inputStream.bufferedReader().readText()
         conn.disconnect()
 
-        val json = JSONObject(response)
-        return json.getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("message")
-            .getString("content")
-            .trim()
+        return JSONObject(response).getJSONArray("choices")
+            .getJSONObject(0).getJSONObject("message")
+            .getString("content").trim()
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -278,19 +298,14 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             it.flush()
         }
 
-        if (conn.responseCode != 200) {
-            throw Exception(getErrorMessage(conn))
-        }
+        if (conn.responseCode != 200) throw Exception(getErrorMessage(conn))
 
         val response = conn.inputStream.bufferedReader().readText()
         conn.disconnect()
 
-        val json = JSONObject(response)
-        return json.getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("message")
-            .getString("content")
-            .trim()
+        return JSONObject(response).getJSONArray("choices")
+            .getJSONObject(0).getJSONObject("message")
+            .getString("content").trim()
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -325,18 +340,13 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             it.flush()
         }
 
-        if (conn.responseCode != 200) {
-            throw Exception(getErrorMessage(conn))
-        }
+        if (conn.responseCode != 200) throw Exception(getErrorMessage(conn))
 
         val response = conn.inputStream.bufferedReader().readText()
         conn.disconnect()
 
-        val json = JSONObject(response)
-        return json.getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("message")
-            .getString("content")
-            .trim()
+        return JSONObject(response).getJSONArray("choices")
+            .getJSONObject(0).getJSONObject("message")
+            .getString("content").trim()
     }
 }
