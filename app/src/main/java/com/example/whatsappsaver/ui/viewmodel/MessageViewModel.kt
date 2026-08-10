@@ -353,6 +353,10 @@ class MessageViewModel @Inject constructor(
             } catch (_: Exception) {}
         }
     }
+        fun saveOpenRouterConfig(key: String, model: String) {
+        aiSettings.openrouterKey = key
+        aiSettings.openrouterModel = model
+    }
 
     // ═══ معالجة AI ═══
     fun processWithAi(text: String, task: String) {
