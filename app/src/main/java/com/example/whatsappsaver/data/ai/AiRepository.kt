@@ -77,7 +77,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
     // ═══════════════════════════════════════════════════════════
     // ═══ OpenRouter — المتوافق مع OpenAI + نماذج مجانية ═══
     // ═══════════════════════════════════════════════════════════
-    private fun callOpenRouter(prompt: String): String {
+        private fun callOpenRouter(prompt: String): String {
         val apiKey = settings.openrouterKey.trim()
         val model = settings.openrouterModel.trim()
 
@@ -85,6 +85,60 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
             throw Exception("مفتاح OpenRouter فارغ. أضفه من الإعدادات")
         }
 
+        // ═══ نجرب عدة أشكال للنموذج ═══
+        val modelsToTry = mutableListOf<String>()
+
+        // النموذج المختار من المستخدم
+        modelsToTry.add(model)
+
+        // إذا ينتهي بـ :free نجرب بدونه أيضاً
+        if (model.endsWith(":free")) {
+            modelsToTry.add(model.removeSuffix(":free"))
+        }
+
+        // نماذج احتياطية مجانية مؤكدة
+        val fallbacks = listOf(
+            "google/gemini-2.0-flash-exp:free",
+            "google/gemma-3-1b-it:free",
+            "deepseek/deepseek-chat-v3-0324:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+            "mistralai/mistral-7b-instruct:free"
+        )
+
+        for (fb in fallbacks) {
+            if (fb !in modelsToTry) modelsToTry.add(fb)
+        }
+
+        val errors = mutableListOf<String>()
+
+        for (m in modelsToTry) {
+            try {
+                val result = callOpenRouterModel(apiKey, m, prompt)
+                if (result.isNotBlank()) return result
+            } catch (e: Exception) {
+                errors.add("$m: ${e.message}")
+                // إذا الخطأ عن الحساب (وليس النموذج) نوقف
+                val msg = e.message ?: ""
+                if (msg.contains("auth", ignoreCase = true) ||
+                    msg.contains("invalid", ignoreCase = true) ||
+                    msg.contains("key", ignoreCase = true)
+                ) {
+                    throw Exception("مفتاح OpenRouter غير صالح. تأكد من المفتاح من:\nopenrouter.ai/keys")
+                }
+            }
+        }
+
+        val errorSummary = errors.joinToString("\n") { "  - $it" }
+        throw Exception(
+            "فشل الاتصال بـ OpenRouter:\n$errorSummary\n\n" +
+            "الحل:\n" +
+            "1. أضف رصيد (\$1) من: openrouter.ai/credits\n" +
+            "2. أو أدخل اسم النموذج يدوياً في الإعدادات\n" +
+            "3. اختر مزود آخر (Gemini أو OpenAI)"
+        )
+    }
+
+    private fun callOpenRouterModel(apiKey: String, model: String, prompt: String): String {
         val url = URL("https://openrouter.ai/api/v1/chat/completions")
         val conn = url.openConnection() as HttpURLConnection
         conn.apply {
@@ -119,7 +173,7 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
         if (conn.responseCode != 200) {
             val errorMsg = getErrorMessage(conn)
             conn.disconnect()
-            throw Exception("OpenRouter: $errorMsg\n\nالنموذج: $model")
+            throw Exception(errorMsg)
         }
 
         val response = conn.inputStream.bufferedReader().readText()
@@ -133,10 +187,8 @@ class AiRepository @Inject constructor(private val settings: AiSettings) {
                 .getString("content")
                 .trim()
         }
-
-        throw Exception("استجابة فارغة من OpenRouter")
+        throw Exception("استجابة فارغة")
     }
-
     // ═══════════════════════════════════════════════════════════
     // ═══ Gemini ═══
     // ═══════════════════════════════════════════════════════════
