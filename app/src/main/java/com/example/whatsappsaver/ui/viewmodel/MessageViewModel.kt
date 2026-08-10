@@ -417,6 +417,15 @@ class MessageViewModel @Inject constructor(
     fun saveMistralKey(key: String) {
         aiSettings.mistralKey = key
     }
+        fun saveOpenRouterConfig(key: String, model: String) {
+        aiSettings.openrouterKey = key
+        aiSettings.openrouterModel = model
+    }
+
+    fun saveGroqConfig(key: String, model: String) {
+        aiSettings.groqKey = key
+        aiSettings.groqModel = model
+    }
 
     fun saveCustomConfig(url: String, key: String, model: String) {
         aiSettings.customUrl = url
