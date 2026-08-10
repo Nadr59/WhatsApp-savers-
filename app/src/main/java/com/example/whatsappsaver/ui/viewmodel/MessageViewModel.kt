@@ -153,7 +153,6 @@ class MessageViewModel @Inject constructor(
         }
     }
 
-    // ═══ تعديل الرسالة ═══
     fun updateMessage(id: Int, text: String, cat: String, note: String) {
         viewModelScope.launch {
             repo.updateMessageContent(id, text, cat, note)
@@ -353,12 +352,11 @@ class MessageViewModel @Inject constructor(
             } catch (_: Exception) {}
         }
     }
-        fun saveOpenRouterConfig(key: String, model: String) {
-        aiSettings.openrouterKey = key
-        aiSettings.openrouterModel = model
-    }
 
-    // ═══ معالجة AI ═══
+    // ═══════════════════════════════════════════════
+    // ═══ معالجة AI — دالة واحدة فقط لكل عملية ═══
+    // ═══════════════════════════════════════════════
+
     fun processWithAi(text: String, task: String) {
         viewModelScope.launch {
             aiLoading = true
@@ -399,7 +397,10 @@ class MessageViewModel @Inject constructor(
         viewModelScope.launch { repo.clearAiHistory() }
     }
 
-    // ═══ إعدادات AI ═══
+    // ═══════════════════════════════════════════════
+    // ═══ إعدادات AI — دالة واحدة فقط لكل مزود ═══
+    // ═══════════════════════════════════════════════
+
     fun getAiSettings() = aiSettings
 
     fun saveAiProvider(provider: String) {
@@ -417,7 +418,8 @@ class MessageViewModel @Inject constructor(
     fun saveMistralKey(key: String) {
         aiSettings.mistralKey = key
     }
-        fun saveOpenRouterConfig(key: String, model: String) {
+
+    fun saveOpenRouterConfig(key: String, model: String) {
         aiSettings.openrouterKey = key
         aiSettings.openrouterModel = model
     }
