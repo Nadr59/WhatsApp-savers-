@@ -24,19 +24,20 @@ fun AiSettingsScreen(
     viewModel: MessageViewModel
 ) {
     val settings = viewModel.getAiSettings()
-    var provider by remember { mutableStateOf(settings.provider) }
-    var openaiKey by remember { mutableStateOf(settings.openaiKey) }
-    var geminiKey by remember { mutableStateOf(settings.geminiKey) }
-    var mistralKey by remember { mutableStateOf(settings.mistralKey) }
-    var openrouterKey by remember { mutableStateOf(settings.openrouterKey) }
-    var openrouterModel by remember { mutableStateOf(settings.openrouterModel) }
-    var groqKey by remember { mutableStateOf(settings.groqKey) }
-    var groqModel by remember { mutableStateOf(settings.groqModel) }
-    var customUrl by remember { mutableStateOf(settings.customUrl) }
-    var customKey by remember { mutableStateOf(settings.customKey) }
-    var customModel by remember { mutableStateOf(settings.customModel) }
-    var showKeys by remember { mutableStateOf(false) }
-    var saved by remember { mutableStateOf(false) }
+
+    var provider: String by remember { mutableStateOf(settings.provider) }
+    var openaiKey: String by remember { mutableStateOf(settings.openaiKey) }
+    var geminiKey: String by remember { mutableStateOf(settings.geminiKey) }
+    var mistralKey: String by remember { mutableStateOf(settings.mistralKey) }
+    var openrouterKey: String by remember { mutableStateOf(settings.openrouterKey) }
+    var openrouterModel: String by remember { mutableStateOf(settings.openrouterModel) }
+    var groqKey: String by remember { mutableStateOf(settings.groqKey) }
+    var groqModel: String by remember { mutableStateOf(settings.groqModel) }
+    var customUrl: String by remember { mutableStateOf(settings.customUrl) }
+    var customKey: String by remember { mutableStateOf(settings.customKey) }
+    var customModel: String by remember { mutableStateOf(settings.customModel) }
+    var showKeys: Boolean by remember { mutableStateOf(false) }
+    var saved: Boolean by remember { mutableStateOf(false) }
 
     val providers = listOf(
         "groq" to "Groq (مجاني - الأسرع)",
@@ -67,7 +68,6 @@ fun AiSettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ═══ اختيار المزود ═══
             Text("مزود الخدمة:", fontWeight = FontWeight.Bold)
 
             providers.forEach { (key, name) ->
@@ -120,12 +120,9 @@ fun AiSettingsScreen(
                 }
             }
 
-            // ═══ حقول كل مزود ═══
             when (provider) {
 
-                // ═══════════════════════════════════════════
                 // ═══ Groq ═══
-                // ═══════════════════════════════════════════
                 "groq" -> {
                     Card(
                         colors = CardDefaults.cardColors(
@@ -164,42 +161,14 @@ fun AiSettingsScreen(
                         "mixtral-8x7b-32768" to "Mixtral 8x7B"
                     )
 
-                    var groqExpanded by remember { mutableStateOf(false) }
-
-                    ExposedDropdownMenuBox(
-                        expanded = groqExpanded,
-                        onExpandedChange = { groqExpanded = !groqExpanded }
-                    ) {
-                        OutlinedTextField(
-                            value = groqModels.find { it.first == groqModel }?.second ?: groqModel,
-                            onValueChange = {},
-                            readOnly = true,
-                            modifier = Modifier.fillMaxWidth().menuAnchor(),
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(groqExpanded) },
-                            shape = RoundedCornerShape(12.dp),
-                            label = { Text("اختر النموذج") }
-                        )
-                        ExposedDropdownMenu(
-                            expanded = groqExpanded,
-                            onDismissRequest = { groqExpanded = false }
-                        ) {
-                            groqModels.forEach { (modelId, modelName) ->
-                                DropdownMenuItem(
-                                    text = { Text(modelName) },
-                                    onClick = {
-                                        groqModel = modelId
-                                        groqExpanded = false
-                                        saved = false
-                                    }
-                                )
-                            }
-                        }
-                    }
+                    ModelDropdown(
+                        models = groqModels,
+                        selectedModel = groqModel,
+                        onModelSelected = { groqModel = it; saved = false }
+                    )
                 }
 
-                // ═══════════════════════════════════════════
                 // ═══ OpenRouter ═══
-                // ═══════════════════════════════════════════
                 "openrouter" -> {
                     Card(
                         colors = CardDefaults.cardColors(
@@ -239,37 +208,11 @@ fun AiSettingsScreen(
                         "openai/gpt-3.5-turbo" to "GPT-3.5 Turbo"
                     )
 
-                    var orExpanded by remember { mutableStateOf(false) }
-
-                    ExposedDropdownMenuBox(
-                        expanded = orExpanded,
-                        onExpandedChange = { orExpanded = !orExpanded }
-                    ) {
-                        OutlinedTextField(
-                            value = orModels.find { it.first == openrouterModel }?.second ?: openrouterModel,
-                            onValueChange = {},
-                            readOnly = true,
-                            modifier = Modifier.fillMaxWidth().menuAnchor(),
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(orExpanded) },
-                            shape = RoundedCornerShape(12.dp),
-                            label = { Text("اختر النموذج") }
-                        )
-                        ExposedDropdownMenu(
-                            expanded = orExpanded,
-                            onDismissRequest = { orExpanded = false }
-                        ) {
-                            orModels.forEach { (modelId, modelName) ->
-                                DropdownMenuItem(
-                                    text = { Text(modelName) },
-                                    onClick = {
-                                        openrouterModel = modelId
-                                        orExpanded = false
-                                        saved = false
-                                    }
-                                )
-                            }
-                        }
-                    }
+                    ModelDropdown(
+                        models = orModels,
+                        selectedModel = openrouterModel,
+                        onModelSelected = { openrouterModel = it; saved = false }
+                    )
 
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
@@ -282,9 +225,7 @@ fun AiSettingsScreen(
                     )
                 }
 
-                // ═══════════════════════════════════════════
                 // ═══ OpenAI ═══
-                // ═══════════════════════════════════════════
                 "openai" -> {
                     ApiKeyField(
                         label = "OpenAI API Key",
@@ -295,9 +236,7 @@ fun AiSettingsScreen(
                     )
                 }
 
-                // ═══════════════════════════════════════════
                 // ═══ Gemini ═══
-                // ═══════════════════════════════════════════
                 "gemini" -> {
                     Card(
                         colors = CardDefaults.cardColors(
@@ -321,9 +260,7 @@ fun AiSettingsScreen(
                     )
                 }
 
-                // ═══════════════════════════════════════════
                 // ═══ Mistral ═══
-                // ═══════════════════════════════════════════
                 "mistral" -> {
                     ApiKeyField(
                         label = "Mistral API Key",
@@ -334,9 +271,7 @@ fun AiSettingsScreen(
                     )
                 }
 
-                // ═══════════════════════════════════════════
                 // ═══ Custom ═══
-                // ═══════════════════════════════════════════
                 "custom" -> {
                     OutlinedTextField(
                         value = customUrl,
@@ -368,7 +303,6 @@ fun AiSettingsScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // ═══ زر الحفظ ═══
             Button(
                 onClick = {
                     viewModel.saveAiProvider(provider)
@@ -410,6 +344,47 @@ fun AiSettingsScreen(
     }
 }
 
+// ═══ كومبوننت منفصل لقائمة النماذج ═══
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelDropdown(
+    models: List<Pair<String, String>>,
+    selectedModel: String,
+    onModelSelected: (String) -> Unit
+) {
+    var expanded: Boolean by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = models.find { it.first == selectedModel }?.second ?: selectedModel,
+            onValueChange = {},
+            readOnly = true,
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            shape = RoundedCornerShape(12.dp),
+            label = { Text("اختر النموذج") }
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            models.forEach { (modelId, modelName) ->
+                DropdownMenuItem(
+                    text = { Text(modelName) },
+                    onClick = {
+                        onModelSelected(modelId)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+// ═══ كومبوننت حقل مفتاح API ═══
 @Composable
 fun ApiKeyField(
     label: String,
